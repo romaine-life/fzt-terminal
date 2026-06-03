@@ -1,8 +1,8 @@
 # fzt-terminal
 
-Terminal renderer for fzt. Provides the tcell-based full-screen TUI that's consumed as a Go library by `fzt-automate`, `fzt-picker`, and `fzt-browser`'s headless session. Imports the fzt engine (`github.com/nelsong6/fzt`) for state and scoring, and `github.com/nelsong6/fzt-frontend` for the command palette and shared interaction behavior.
+Terminal renderer for fzt. Provides the tcell-based full-screen TUI that's consumed as a Go library by `fzt-automate`, `fzt-picker`, and `fzt-browser`'s headless session. Imports the fzt engine (`github.com/romaine-life/fzt`) for state and scoring, and `github.com/romaine-life/fzt-frontend` for the command palette and shared interaction behavior.
 
-The other half of the old fzt-terminal — the browser renderer and the WASM bridge — now lives at `github.com/nelsong6/fzt-browser`. The shell-automation CLI lives at `github.com/nelsong6/fzt-automate`. The command palette + credential + API sync live at `github.com/nelsong6/fzt-frontend`. See the 2026-04-16 split history at the bottom.
+The other half of the old fzt-terminal — the browser renderer and the WASM bridge — now lives at `github.com/romaine-life/fzt-browser`. The shell-automation CLI lives at `github.com/romaine-life/fzt-automate`. The command palette + credential + API sync live at `github.com/romaine-life/fzt-frontend`. See the 2026-04-16 split history at the bottom.
 
 ## Architecture
 
@@ -27,7 +27,7 @@ Consumers of this repo's tui package:
 
 ### fzt-frontend (imported, not in this repo)
 
-Shared frontend behavior lives in `github.com/nelsong6/fzt-frontend`:
+Shared frontend behavior lives in `github.com/romaine-life/fzt-frontend`:
 
 Shared frontend behavior imported by every fzt app:
 
@@ -54,7 +54,7 @@ Full-screen TUI rendering via tcell. Key files:
 
 ### Browser rendering — moved
 
-The `web/` folder (JS/CSS shim) and `cmd/wasm/` (WASM bridge) both moved to `github.com/nelsong6/fzt-browser` on 2026-04-16. That repo publishes `fzt.wasm` + the four JS/CSS files as release assets; `my-homepage` and `fzt-showcase` download from there. See the fzt-browser CLAUDE.md for the WASM API reference.
+The `web/` folder (JS/CSS shim) and `cmd/wasm/` (WASM bridge) both moved to `github.com/romaine-life/fzt-browser` on 2026-04-16. That repo publishes `fzt.wasm` + the four JS/CSS files as release assets; `my-homepage` and `fzt-showcase` download from there. See the fzt-browser CLAUDE.md for the WASM API reference.
 
 ### Build script — removed
 
@@ -184,7 +184,7 @@ Why: search scoring is case-insensitive so capitals and lowercase produce identi
 
 ### Capital letter input
 
-Currently typeable in any edit buffer (rename / property-edit / add-*) because `handleRenameKey` accepts every rune. In search mode they also go into the query; case-insensitive scoring makes them behave identically to lowercase. CapsLock works as an OS-level workaround when the keyboard layout can't produce the character otherwise. A future chord or sticky-caps mode is tracked by [my-homepage#23](https://github.com/nelsong6/my-homepage/issues/23).
+Currently typeable in any edit buffer (rename / property-edit / add-*) because `handleRenameKey` accepts every rune. In search mode they also go into the query; case-insensitive scoring makes them behave identically to lowercase. CapsLock works as an OS-level workaround when the keyboard layout can't produce the character otherwise. A future chord or sticky-caps mode is tracked by [my-homepage#23](https://github.com/romaine-life/my-homepage/issues/23).
 
 ### Retired Ctrl bindings
 
@@ -202,27 +202,27 @@ All Ctrl bindings have been removed from the engine and the picker. Replacements
 
 The canonical list of key → action mappings lives in `fzt-frontend/command.go`'s `helpEntries()` function, rendered into the `:help/` palette subfolder at runtime. Every fzt consumer gets the same list; users can scope into `:help/` (or fuzzy-match `help` from root) to browse every binding with its long-form description. Each entry carries `Action = "help-entry"`, which `HandleCommandAction` maps to a title-bar pulse so pressing Enter on a help row echoes the description.
 
-This doc is the narrative reference. The palette is the runtime reference. A visual state-transition diagram is tracked by [fzt#10](https://github.com/nelsong6/fzt/issues/10) and will live under `diagrams.romaine.life/fzt/keyboard` when built.
+This doc is the narrative reference. The palette is the runtime reference. A visual state-transition diagram is tracked by [fzt#10](https://github.com/romaine-life/fzt/issues/10) and will live under `diagrams.romaine.life/fzt/keyboard` when built.
 
 New code MUST NOT introduce any Ctrl, Alt, or Meta binding.
 
 ## Dependencies
 
-- `github.com/nelsong6/fzt` -- engine (state, scoring, tree logic, YAML parsing, render abstractions)
-- `github.com/nelsong6/fzt-frontend` -- command palette, identity, action routing, credential store, API-backed menu sync
+- `github.com/romaine-life/fzt` -- engine (state, scoring, tree logic, YAML parsing, render abstractions)
+- `github.com/romaine-life/fzt-frontend` -- command palette, identity, action routing, credential store, API-backed menu sync
 - `github.com/gdamore/tcell/v2` -- terminal screen library
 - `golang.org/x/term` -- raw terminal mode
 - `golang.org/x/sys` -- Windows console API
 
 ## Building
 
-Nothing to build here — this repo is a Go library plus a Node.js route package. Consumers (`fzt-automate`, `fzt-picker`, `fzt-browser`) import `github.com/nelsong6/fzt-terminal/tui` and handle their own builds.
+Nothing to build here — this repo is a Go library plus a Node.js route package. Consumers (`fzt-automate`, `fzt-picker`, `fzt-browser`) import `github.com/romaine-life/fzt-terminal/tui` and handle their own builds.
 
 ## CI
 
 Two manually-triggered workflows (Claude-driven):
 
-- **`.github/workflows/dispatch.yml`** (`workflow_dispatch`) — dependency bump path. Calls `go-dependency-update-template` to bump `github.com/nelsong6/fzt` + `github.com/nelsong6/fzt-frontend`, commit, push, and cut a release at the new sha.
+- **`.github/workflows/dispatch.yml`** (`workflow_dispatch`) — dependency bump path. Calls `go-dependency-update-template` to bump `github.com/romaine-life/fzt` + `github.com/romaine-life/fzt-frontend`, commit, push, and cut a release at the new sha.
 - **`.github/workflows/release.yml`** (`workflow_dispatch`) — direct-push release path for code changes. Calls `release-and-dispatch-template` to tag the current main. Shared `release-tag` concurrency group with `dispatch.yml`.
 
 Both just cut a Go-module release (no asset uploads — consumers `go get` at the tag). Downstream Go-module consumers (`fzt-picker`, `fzt-automate`, `fzt-browser`) are updated manually per repo — no `repository_dispatch` fan-out.
@@ -242,7 +242,7 @@ Menu CRUD used to live in `packages/routes/` here (`@nelsong6/fzt-terminal-route
 
 ### 2026-04-20
 
-1. **Escape in search exits to normal mode before clearing query** -- First Escape from search with a non-empty query now flips to normal mode with the query preserved (Vim insert→normal analog); second Escape resumes the old cascade and clears the query. Motivation: user reported the prior "clear query in one shot" behavior fought Vim muscle memory — Escape should leave the free-typing mode without wiping what was typed. Engine change in [nelsong6/fzt#12](https://github.com/nelsong6/fzt/issues/12) (fzt v0.2.70); docs here rebased cascade step numbering (6 steps now, with a new step 2 for the normal-mode transition), updated the Escape row in the key table, and corrected the two retired-Ctrl replacement rows (Ctrl+U, Ctrl+W) to reflect that clearing the query now takes two presses (or Shift+Backspace). Shift+Backspace behavior unchanged — still resets to home in one gesture.
+1. **Escape in search exits to normal mode before clearing query** -- First Escape from search with a non-empty query now flips to normal mode with the query preserved (Vim insert→normal analog); second Escape resumes the old cascade and clears the query. Motivation: user reported the prior "clear query in one shot" behavior fought Vim muscle memory — Escape should leave the free-typing mode without wiping what was typed. Engine change in [romaine-life/fzt#12](https://github.com/romaine-life/fzt/issues/12) (fzt v0.2.70); docs here rebased cascade step numbering (6 steps now, with a new step 2 for the normal-mode transition), updated the Escape row in the key table, and corrected the two retired-Ctrl replacement rows (Ctrl+U, Ctrl+W) to reflect that clearing the query now takes two presses (or Shift+Backspace). Shift+Backspace behavior unchanged — still resets to home in one gesture.
 
 ### 2026-04-15
 

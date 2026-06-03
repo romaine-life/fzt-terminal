@@ -1,7 +1,7 @@
 name: Dependency Update
 
 # Auto-trigger disabled — Claude-driven CI. Run manually via
-# `gh workflow run dispatch.yml -R nelsong6/fzt-terminal`. Downstream
+# `gh workflow run dispatch.yml -R romaine-life/fzt-terminal`. Downstream
 # consumers are updated manually per repo.
 on:
   workflow_dispatch:
@@ -21,7 +21,7 @@ jobs:
   update:
     uses: romaine-life/pipeline-templates/.github/workflows/go-dependency-update-template.yml@main
     with:
-      modules: github.com/nelsong6/fzt github.com/nelsong6/fzt-frontend
+      modules: github.com/romaine-life/fzt github.com/romaine-life/fzt-frontend
       # Template handles bump + release atomically. Downstream (fzt-picker,
       # fzt-automate, fzt-browser) is Claude-driven — no repository_dispatch
       # fan-out.
