@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/gdamore/tcell/v2"
-	"github.com/nelsong6/fzt/core"
-	"github.com/nelsong6/fzt/render"
+	"github.com/romaine-life/fzt/core"
+	"github.com/romaine-life/fzt/render"
 )
 
 // -- Unified renderer --

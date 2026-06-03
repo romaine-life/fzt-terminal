@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nelsong6/fzt/core"
-	frontend "github.com/nelsong6/fzt-frontend"
+	"github.com/romaine-life/fzt/core"
+	frontend "github.com/romaine-life/fzt-frontend"
 )
 
 const syncInterval = 20 * 60 // 20 minutes in seconds

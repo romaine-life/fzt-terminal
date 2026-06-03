@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"github.com/gdamore/tcell/v2"
-	"github.com/nelsong6/fzt/core"
-	"github.com/nelsong6/fzt/render"
-	frontend "github.com/nelsong6/fzt-frontend"
+	"github.com/romaine-life/fzt/core"
+	"github.com/romaine-life/fzt/render"
+	frontend "github.com/romaine-life/fzt-frontend"
 	"golang.org/x/term"
 )
 
@@ -1287,7 +1287,7 @@ func drawBorderSides(c render.Canvas, w, topY, bottomY int) {
 func RunUpdate(s *core.State) {
 	defer PauseIfInteractive()
 
-	repo := "nelsong6/fzt"
+	repo := "romaine-life/fzt"
 	assetPrefix := "fzt"
 	binaryName := "fzt"
 	if s != nil {

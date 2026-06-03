@@ -2,7 +2,7 @@ package tui
 
 import (
 	"github.com/gdamore/tcell/v2"
-	"github.com/nelsong6/fzt/render"
+	"github.com/romaine-life/fzt/render"
 )
 
 // tcellCanvas wraps a real tcell.Screen to satisfy render.Canvas.
