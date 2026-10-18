@@ -114,8 +114,13 @@ func main() {
 		// panel, icon column), so every fzt picker looks the same.
 		cfg.Tiered = true
 		cfg.TreeMode = true
+		start := 0
 		if *header != "" {
 			items[0].Depth = -1
+			start = 1
+		}
+		for i := start; i < len(items); i++ {
+			items[i].IsDir = isDir(items[i].Fields[0])
 		}
 	}
 
@@ -157,6 +162,21 @@ func readStdin() ([]string, error) {
 		}
 	}
 	return lines, scanner.Err()
+}
+
+// isDir reports whether a line names a directory, relative to the working
+// directory. Surrounding quotes are stripped: PowerShell quotes completions
+// that contain spaces ('.\My Folder').
+func isDir(s string) bool {
+	s = strings.TrimSpace(s)
+	if len(s) >= 2 && (s[0] == '\'' || s[0] == '"') && s[len(s)-1] == s[0] {
+		s = s[1 : len(s)-1]
+	}
+	if s == "" {
+		return false
+	}
+	info, err := os.Stat(s)
+	return err == nil && info.IsDir()
 }
 
 func parseIntList(s string) []int {

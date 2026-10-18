@@ -310,7 +310,7 @@ func drawTreeRow(c render.Canvas, row core.TreeRow, isSelected, isTopMatch bool,
 	if row.Item.IsProperty {
 		iconRune = '\u2699' // ⚙ gear icon for property items
 		iconStyle = tcell.StyleDefault.Foreground(HintFg)
-	} else if row.Item.HasChildren {
+	} else if row.Item.HasChildren || row.Item.IsDir {
 		iconRune = '\U000F024B'
 		iconStyle = tcell.StyleDefault.Foreground(FolderIconFg).Bold(true)
 	} else {
