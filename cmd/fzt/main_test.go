@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/romaine-life/fzt/core"
 	"github.com/romaine-life/fzt-terminal/tui"
+	"github.com/romaine-life/fzt/core"
 )
 
 func TestPickerRendersStdinList(t *testing.T) {

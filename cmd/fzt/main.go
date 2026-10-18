@@ -19,9 +19,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/romaine-life/fzt-terminal/tui"
 	"github.com/romaine-life/fzt/core"
 	"github.com/romaine-life/fzt/render"
-	"github.com/romaine-life/fzt-terminal/tui"
 )
 
 func main() {
