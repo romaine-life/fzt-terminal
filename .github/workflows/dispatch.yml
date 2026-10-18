@@ -22,6 +22,8 @@ jobs:
     uses: romaine-life/pipeline-templates/.github/workflows/go-dependency-update-template.yml@main
     with:
       modules: github.com/romaine-life/fzt github.com/romaine-life/fzt-frontend
-      # Template handles bump + release atomically. Downstream (fzt-picker,
-      # fzt-automate, fzt-browser) is Claude-driven — no repository_dispatch
-      # fan-out.
+      # Template handles bump + release atomically, then fires build.yml to
+      # attach the `fzt` picker binaries to the new release.
+      artifact-build-workflow: build.yml
+      # Downstream (fzt-picker, fzt-automate, fzt-browser) is Claude-driven —
+      # no repository_dispatch fan-out.

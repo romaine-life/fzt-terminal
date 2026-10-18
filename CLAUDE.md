@@ -18,6 +18,7 @@ fzt-frontend (interaction layer)
   frontend.CheckBookmarkStaleness  consumed by tui/sync.go for background staleness check
 
 Consumers of this repo's tui package:
+  fzt            (cmd/fzt)    -> tui.Run over stdin / --yaml: the fzf-style picker CLI
   fzt-automate   (CLI)        -> tui.Run for the shell menu
   fzt-picker     (Windows)    -> tui.NewSession headless, rendered via CGo/GDI
   fzt-browser    (WASM)       -> tui.NewSession headless, rendered via ANSI in browser
@@ -216,7 +217,14 @@ New code MUST NOT introduce any Ctrl, Alt, or Meta binding.
 
 ## Building
 
-Nothing to build here — this repo is a Go library plus a Node.js route package. Consumers (`fzt-automate`, `fzt-picker`, `fzt-browser`) import `github.com/romaine-life/fzt-terminal/tui` and handle their own builds.
+The `tui` package is a library; consumers (`fzt-automate`, `fzt-picker`, `fzt-browser`) import `github.com/romaine-life/fzt-terminal/tui` and handle their own builds.
+
+`cmd/fzt` is the `fzt` binary: an fzf-style picker. Pipe lines in (or pass `--yaml`), get the selection on stdout; exit 130 on cancel, 1 on empty input. `--filter "query"` prints ranked matches without a UI (this replaces the engine repo's old scoring-only CLI). `--height` is accepted and ignored for fzf compatibility. The `:` palette is off (`HidePalette`) — a plain picker has no commands. Shell scripts across shell-config (`pop`, `ws-load`, `vcs`, the profile-5 Tab handler) call it by name.
+
+```
+go build -o fzt.exe ./cmd/fzt
+go test ./cmd/fzt
+```
 
 ## CI
 
@@ -225,7 +233,7 @@ Two manually-triggered workflows (Claude-driven):
 - **`.github/workflows/dispatch.yml`** (`workflow_dispatch`) — dependency bump path. Calls `go-dependency-update-template` to bump `github.com/romaine-life/fzt` + `github.com/romaine-life/fzt-frontend`, commit, push, and cut a release at the new sha.
 - **`.github/workflows/release.yml`** (`workflow_dispatch`) — direct-push release path for code changes. Calls `release-and-dispatch-template` to tag the current main. Shared `release-tag` concurrency group with `dispatch.yml`.
 
-Both just cut a Go-module release (no asset uploads — consumers `go get` at the tag). Downstream Go-module consumers (`fzt-picker`, `fzt-automate`, `fzt-browser`) are updated manually per repo — no `repository_dispatch` fan-out.
+Both cut a Go-module release (library consumers `go get` at the tag), then fire **`.github/workflows/build.yml`** with the new tag to build `cmd/fzt` for windows/linux/darwin and attach `fzt-<os>-<arch>[.exe]` to the release. Downstream Go-module consumers (`fzt-picker`, `fzt-automate`, `fzt-browser`) are updated manually per repo — no `repository_dispatch` fan-out.
 
 Menu CRUD used to live in `packages/routes/` here (`@nelsong6/fzt-terminal-routes`, mounted at `/at`). Retired 2026-04-18 — all tree CRUD now runs through `@nelsong6/fzt-frontend-routes` at `/fzt/tree/:id` (flat ids like `nelson-menu`). The package directory and its publish workflow were deleted.
 
@@ -239,6 +247,10 @@ Menu CRUD used to live in `packages/routes/` here (`@nelsong6/fzt-terminal-route
 - **Internalized shell commands**: load-*, unload, sync handled internally in HandleCommandAction -- no PowerShell function dependencies. load auto-syncs and exits; unload clears cache and exits.
 
 ## Change log
+
+### 2026-10-18
+
+1. **Restored the interactive `fzt` CLI as `cmd/fzt`** -- The 2026-04-07 engine/terminal split moved the TUI here but dropped the CLI (`cmd/root.go` in the engine repo, last at `8b8d731^`), leaving the engine's scoring-only binary holding the `fzt` name. Every shell-config script that piped a list into `fzt` (`pop`, `ws-load`, `vcs`) silently stopped getting a picker. Ported the stdin/`--yaml`/`--filter` paths and the flags those scripts use onto today's `tui.Run`, using the stdlib `flag` package instead of cobra. Dropped flags with no current caller (`--simulate`, `--dir`, `--commands`, `--frontend-*`, `--update`). Motivation: Nelson wanted Tab completion to open his own picker and found the generic "pick from this list" mode he assumed existed was gone. Rejected homes: the engine (must stay TUI-free, and fzt-terminal already depends on it), fzt-automate (the `at` app with auth and sync, wrong tool for a generic picker), a new repo (another release pipeline for ~150 lines).
 
 ### 2026-04-20
 
