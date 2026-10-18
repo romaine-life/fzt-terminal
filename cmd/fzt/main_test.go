@@ -8,12 +8,14 @@ import (
 	"github.com/romaine-life/fzt/core"
 )
 
-func TestPickerRendersStdinList(t *testing.T) {
+func TestPickerRendersStdinListInTreeStyle(t *testing.T) {
 	items := core.ParseLines([]string{"journal-biking", "journal-career", "journal-dreams", "lights"}, "\t", false, false)
-	cfg := tui.Config{Layout: "reverse", Border: true, Prompt: "> ", HidePalette: true, DepthPenalty: 5}
-	frames := tui.Simulate(items, cfg, "dre", 50, 10, false)
-	t.Log("\n" + tui.FormatFrames(frames[len(frames)-1:]))
-	if !strings.Contains(tui.FormatFrames(frames[len(frames)-1:]), "journal-dreams") {
-		t.Fatal("missing match")
+	cfg := tui.Config{Layout: "reverse", Border: true, HidePalette: true, TreeMode: true, Tiered: true, DepthPenalty: 5}
+	frame := tui.FormatFrames(tui.Simulate(items, cfg, "", 50, 10, false))
+	t.Log("\n" + frame)
+	for _, want := range []string{"type to search", "journal-dreams", "lights"} {
+		if !strings.Contains(frame, want) {
+			t.Fatalf("frame missing %q", want)
+		}
 	}
 }

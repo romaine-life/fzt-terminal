@@ -219,7 +219,7 @@ New code MUST NOT introduce any Ctrl, Alt, or Meta binding.
 
 The `tui` package is a library; consumers (`fzt-automate`, `fzt-picker`, `fzt-browser`) import `github.com/romaine-life/fzt-terminal/tui` and handle their own builds.
 
-`cmd/fzt` is the `fzt` binary: an fzf-style picker. Pipe lines in (or pass `--yaml`), get the selection on stdout; exit 130 on cancel, 1 on empty input. `--filter "query"` prints ranked matches without a UI (this replaces the engine repo's old scoring-only CLI). `--height` is accepted and ignored for fzf compatibility. The `:` palette is off (`HidePalette`) — a plain picker has no commands. Shell scripts across shell-config (`pop`, `ws-load`, `vcs`, the profile-5 Tab handler) call it by name.
+`cmd/fzt` is the `fzt` binary: an fzf-style picker. Pipe lines in (or pass `--yaml`), get the selection on stdout; exit 130 on cancel, 1 on empty input. `--filter "query"` prints ranked matches without a UI (this replaces the engine repo's old scoring-only CLI). Piped lists render with the same tree renderer as fzt-automate (search box panel, icon column), so every fzt picker looks alike. `--height` is accepted and ignored for fzf compatibility. The `:` palette is off (`HidePalette`) — a plain picker has no commands. Shell scripts across shell-config (`pop`, `ws-load`, `vcs`, the profile-5 Tab handler) call it by name.
 
 ```
 go build -o fzt.exe ./cmd/fzt

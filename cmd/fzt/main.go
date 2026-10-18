@@ -110,6 +110,13 @@ func main() {
 			}
 		}
 		items = core.ParseLines(lines, *delimiter, cfg.Tiered, cfg.ANSI)
+		// Render lists with the tree renderer fzt-automate uses (search box
+		// panel, icon column), so every fzt picker looks the same.
+		cfg.Tiered = true
+		cfg.TreeMode = true
+		if *header != "" {
+			items[0].Depth = -1
+		}
 	}
 
 	if *filter != "" {
