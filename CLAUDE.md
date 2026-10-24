@@ -22,6 +22,7 @@ Consumers of this repo's tui package:
   fzt-automate   (CLI)        -> tui.Run for the shell menu
   fzt-picker     (Windows)    -> tui.NewSession headless, rendered via CGo/GDI
   fzt-browser    (WASM)       -> tui.NewSession headless, rendered via ANSI in browser
+  fztlib         (cmd/fztlib) -> host.Session as a C library (Windows DLL), for apps that draw the menu themselves
 ```
 
 ## Package guide
@@ -39,6 +40,10 @@ Shared frontend behavior imported by every fzt app:
 - **EnvTags / DisplayCondition** -- environment-based command filtering. `Config.EnvTags` declares the runtime capabilities (e.g. `["terminal"]` for automate, `["wasm", "browser"]` for the WASM bridge). During command tree construction (`buildCoreLevelCommandTree` / `buildTwoLevelCommandTree`), items with a non-empty `DisplayCondition` are skipped unless the condition string is present in `EnvTags`. Example: the `update` command has `DisplayCondition: "terminal"` so it only appears in the terminal palette, never in the browser. Tags are defined in `core.Config`, propagated to `core.State.EnvTags`, and checked via `hasEnvTag()`. The engine's `core.Item.DisplayCondition` field and `core.State.EnvTags` field are the underlying storage.
 - **`HandleValidate` / `ReadJWTSecret`** (`credential.go`) -- credential store integration via go-keyring (Windows Credential Manager / KWallet / macOS Keychain). HandleValidate is invoked from the validate command in the `::` core palette.
 - **`sync.go`** (root package) -- API-backed tree sync. Generic `FetchTree(token, treeID)` / `SaveTree(token, treeID, tree, baseVersion)` against `/fzt/tree/:id`. `SyncMenu` / `SaveMenu` are thin wrappers that call the generics with `MenuTreeID(claims.Sub)` (→ `"<sub>-menu"`). YAML serialization to `menu-cache.yaml`. Version number persisted to `.menu-version` for next launch.
+
+### `host/` and `cmd/fztlib/` -- fzt for apps that draw the menu themselves
+
+`host.Session` wraps a headless tree session for a host app (first one: spotify_player's command palette). The host sends key events and gets back a `Frame` of data to draw (`render.VisibleRow`s, `PromptState`, `UIState`), plus a `Result` once the user picks: `select` with the entry's `action`, `prompt` with typed text after the host called `Prompt`, `command` for a host command from the `:` palette, or `cancel`. `:` palette commands run through `frontend.HandleCommandAction`, as in `tui.Run`. `cmd/fztlib` exports it as C functions taking and returning JSON strings (`fzt_open`, `fzt_key`, `fzt_resize`, `fzt_prompt`, `fzt_close`, `fzt_version`, `fzt_free`); `api.go` holds the logic without cgo so `go test` covers it. Releases attach `fzt-windows-amd64.dll` and its `.sha256`; building it needs MinGW GCC, which CI installs.
 
 ### `tui/` -- Terminal renderer
 

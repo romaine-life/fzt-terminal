@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go vet ./...
+      - run: go test ./...
+
+  dll:
+    # the release builds this DLL; build it on every change so a release isn't its first build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Install MinGW GCC
+        shell: bash
+        run: C:/msys64/usr/bin/pacman.exe -S --noconfirm mingw-w64-ucrt-x86_64-gcc
+      - name: Build
+        shell: bash
+        env:
+          CGO_ENABLED: "1"
+          CC: C:\msys64\ucrt64\bin\gcc.exe
+        run: go build -buildmode=c-shared -o fzt-windows-amd64.dll ./cmd/fztlib
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fzt-windows-amd64-dll
+          path: |
+            fzt-windows-amd64.dll
+            fzt-windows-amd64.h

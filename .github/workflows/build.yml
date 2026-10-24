@@ -1,8 +1,10 @@
 name: Build
 
 # Called by the release templates AFTER a release is cut. Builds the `fzt`
-# picker CLI (cmd/fzt) for three OSes and uploads it to that release. The tag
-# is passed as an input, so the build checks out exactly what was released.
+# picker CLI (cmd/fzt) for three OSes, and the fzt library (cmd/fztlib) as a
+# Windows DLL for apps that load fzt in-process, and uploads them to that
+# release. The tag is passed as an input, so the build checks out exactly what
+# was released.
 
 on:
   workflow_dispatch:
@@ -58,3 +60,42 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release upload ${{ inputs.tag }} ${{ matrix.output }} --clobber -R ${{ github.repository }}
+
+  dll:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Install MinGW GCC
+        shell: bash
+        run: C:/msys64/usr/bin/pacman.exe -S --noconfirm mingw-w64-ucrt-x86_64-gcc
+
+      - name: Get engine version from go.mod
+        id: engine
+        shell: bash
+        run: echo "version=$(grep 'github.com/romaine-life/fzt ' go.mod | awk '{print $2}')" >> $GITHUB_OUTPUT
+
+      - name: Build
+        shell: bash
+        env:
+          CGO_ENABLED: "1"
+          CC: C:\msys64\ucrt64\bin\gcc.exe
+        run: >
+          go build -buildmode=c-shared
+          -ldflags="-X github.com/romaine-life/fzt/render.Version=${{ inputs.tag }}
+          -X github.com/romaine-life/fzt-frontend.EngineVersion=${{ steps.engine.outputs.version }}"
+          -o fzt-windows-amd64.dll ./cmd/fztlib
+
+      - name: Upload to release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          sha256sum fzt-windows-amd64.dll > fzt-windows-amd64.dll.sha256
+          gh release upload ${{ inputs.tag }} fzt-windows-amd64.dll fzt-windows-amd64.dll.sha256 --clobber -R ${{ github.repository }}
