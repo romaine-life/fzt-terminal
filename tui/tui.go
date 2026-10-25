@@ -491,7 +491,7 @@ func runWithSession(screen tcell.Screen, items []core.Item, cfg Config) (string,
 		screen.Clear()
 		w, h := screen.Size()
 		drawUnified(canvas, s, cfg, w, 0, h)
-		screen.Sync() // full redraw -- avoids stale content from layout changes
+		screen.Show()
 
 		ev := screen.PollEvent()
 		switch ev := ev.(type) {
