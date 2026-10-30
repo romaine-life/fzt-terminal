@@ -308,8 +308,39 @@ func processAction(s *core.State, action string) string {
 			s.LastActionPreview = preview
 			return ""
 		}
+		// An input leaf asks for text before it is picked: the text box
+		// switches to free text, hinted by the action's target.
+		if item.Action != nil && item.Action.Type == "input" {
+			s.EnterPromptMode(inputMode, action[7:], 0, item.Action.Target)
+			return ""
+		}
 	}
 	return action
+}
+
+// inputMode is the prompt mode an input leaf opens.
+const inputMode = "input"
+
+// pendingInput is the selection waiting on an input leaf's text, or "".
+// Read it before the key that may end the prompt: ending it clears it.
+func pendingInput(s *core.State) string {
+	if s.PromptMode != inputMode {
+		return ""
+	}
+	return s.PromptAction
+}
+
+// inputResult turns the prompt result of an input leaf into its pick: the
+// selection, a tab, then the typed text.
+func inputResult(pending, action string) (string, bool) {
+	if pending == "" {
+		return "", false
+	}
+	text, ok := strings.CutPrefix(action, "prompt:"+pending+":")
+	if !ok {
+		return "", false
+	}
+	return pending + "\t" + text, true
 }
 
 // findSelectedItem recovers the full Item from the tree. The formatted action string
@@ -512,8 +543,12 @@ func runWithSession(screen tcell.Screen, items []core.Item, cfg Config) (string,
 				break
 			}
 			wasRenaming := s.EditMode == "rename"
+			pending := pendingInput(s)
 			shift := ev.Modifiers()&tcell.ModShift != 0
 			raw := core.HandleUnifiedKey(s, ev.Key(), ev.Rune(), shift, cfg, searchCols)
+			if pick, ok := inputResult(pending, raw); ok {
+				return pick, nil
+			}
 			// Auto-close inspect view only after a property edit is confirmed
 			if wasRenaming && s.EditMode == "" && s.InspectTargetIdx >= 0 {
 				cleanupInspect(s)

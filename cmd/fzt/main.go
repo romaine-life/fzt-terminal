@@ -7,6 +7,7 @@
 //	$entries | fzt --layout reverse --border --header "Remove which repo?"
 //	fzt --yaml menu.yaml --title "What would you like to do?"
 //	ls | fzt --filter "query"          # non-interactive: ranked matches
+//	$rows | fzt --input-col 3          # rows with a 3rd field ask for text
 //
 // Exit codes follow fzf: 0 selected, 1 no input, 130 cancelled.
 package main
@@ -44,6 +45,7 @@ func main() {
 		yamlPath     = flag.String("yaml", "", "Load a hierarchical tree from a YAML file (implies tree mode)")
 		title        = flag.String("title", "", "Title shown on the border")
 		titlePos     = flag.String("title-pos", "left", "Title position: 'left', 'center' or 'right'")
+		inputCol     = flag.Int("input-col", 0, "Field index (1-based) that makes a row ask for text: a row with this field set prompts for text on Enter, the field as its hint, and prints the selection, a tab and the text")
 		version      = flag.Bool("version", false, "Print version and exit")
 	)
 	flag.StringVar(delimiter, "d", "\t", "Field delimiter (shorthand)")
@@ -121,6 +123,7 @@ func main() {
 		}
 		for i := start; i < len(items); i++ {
 			items[i].IsDir = isDir(items[i].Fields[0])
+			markInput(&items[i], *inputCol)
 		}
 	}
 
@@ -190,4 +193,14 @@ func parseIntList(s string) []int {
 		}
 	}
 	return result
+}
+
+// markInput makes a row an input leaf when its col-th field (1-based) is set:
+// picking it asks for text, hinted by that field. The renderer draws only the
+// first two fields, so the hint stays out of the list.
+func markInput(item *core.Item, col int) {
+	if col < 1 || len(item.Fields) < col || item.Fields[col-1] == "" {
+		return
+	}
+	item.Action = &core.ItemAction{Type: "input", Target: item.Fields[col-1]}
 }
