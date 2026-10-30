@@ -35,7 +35,7 @@ func main() {
 		acceptNth    = flag.String("accept-nth", "", "Comma-separated field indices to output (1-based)")
 		prompt       = flag.String("prompt", "> ", "Prompt string")
 		delimiter    = flag.String("delimiter", "\t", "Field delimiter")
-		tiered       = flag.Bool("tiered", false, "Tiered depth-aware scoring (first column is depth)")
+		tiered       = flag.Bool("tiered", false, "Input is a tree: the first column is depth, and a row holds the deeper rows after it (Enter opens it, Esc or Backspace goes back)")
 		depthPenalty = flag.Int("depth-penalty", 5, "Score penalty per depth level (with --tiered)")
 		searchCols   = flag.String("search-cols", "", "Comma-separated field indices qualifying for the name tier (overrides --nth)")
 		searchDepth  = flag.Int("search-depth", 0, "Limit search to N levels below the current scope (0 = unlimited)")
@@ -106,7 +106,12 @@ func main() {
 			os.Exit(1)
 		}
 		if *header != "" {
-			lines = append([]string{*header}, lines...)
+			h := *header
+			if cfg.Tiered {
+				// the header has no depth column of its own
+				h = "0" + *delimiter + h
+			}
+			lines = append([]string{h}, lines...)
 			if cfg.HeaderLines == 0 {
 				cfg.HeaderLines = 1
 			}
@@ -121,9 +126,14 @@ func main() {
 			items[0].Depth = -1
 			start = 1
 		}
+		if *tiered {
+			linkTree(items[start:], start)
+		}
 		for i := start; i < len(items); i++ {
 			items[i].IsDir = isDir(items[i].Fields[0])
-			markInput(&items[i], *inputCol)
+			if !items[i].HasChildren {
+				markInput(&items[i], *inputCol)
+			}
 		}
 	}
 
@@ -203,4 +213,26 @@ func markInput(item *core.Item, col int) {
 		return
 	}
 	item.Action = &core.ItemAction{Type: "input", Target: item.Fields[col-1]}
+}
+
+// linkTree makes depth-prefixed rows a tree, as LoadYAML does for a YAML menu:
+// a row's parent is the nearest earlier row one level shallower. rows starts at
+// index base of the full item list.
+func linkTree(rows []core.Item, base int) {
+	var stack []int // indices into rows, shallowest first
+	for i := range rows {
+		for len(stack) > 0 && rows[stack[len(stack)-1]].Depth >= rows[i].Depth {
+			stack = stack[:len(stack)-1]
+		}
+		rows[i].ParentIdx = -1
+		rows[i].Path = rows[i].Fields[0]
+		if len(stack) > 0 {
+			p := stack[len(stack)-1]
+			rows[i].ParentIdx = base + p
+			rows[i].Path = rows[p].Path + " › " + rows[i].Fields[0]
+			rows[p].Children = append(rows[p].Children, base+i)
+			rows[p].HasChildren = true
+		}
+		stack = append(stack, i)
+	}
 }
