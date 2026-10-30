@@ -330,17 +330,47 @@ func pendingInput(s *core.State) string {
 	return s.PromptAction
 }
 
-// inputResult turns the prompt result of an input leaf into its pick: the
-// selection, a tab, then the typed text.
-func inputResult(pending, action string) (string, bool) {
+// inputPick turns the prompt result of an input leaf into its pick. Output is
+// the selection, a tab, then the typed text.
+func inputPick(pending string, item core.Item, action string) (Pick, bool) {
 	if pending == "" {
-		return "", false
+		return Pick{}, false
 	}
 	text, ok := strings.CutPrefix(action, "prompt:"+pending+":")
 	if !ok {
-		return "", false
+		return Pick{}, false
 	}
-	return pending + "\t" + text, true
+	return Pick{Kind: "input", Item: item, Text: text, Output: pending + "\t" + text}, true
+}
+
+// Pick is how the picker ended.
+type Pick struct {
+	// Kind is "select" (a menu item), "input" (an input leaf and its typed
+	// text), "command" (a frontend action, such as "synced") or "cancel".
+	Kind string
+	// Item is the picked item itself, for "select" and "input". Looking the
+	// pick up by name instead runs the wrong item when two share a name.
+	Item core.Item
+	// Text is what was typed into an input leaf.
+	Text string
+	// Output is the pick as text: the AcceptNth fields (then a tab and the
+	// text, for an input leaf), or the command's action. "" on cancel.
+	Output string
+}
+
+// endingPick turns an action into the pick that ends the picker, if it ends
+// it. r is the key or click result the action came from.
+func endingPick(action string, r core.ActionResult) (Pick, bool) {
+	switch {
+	case action == "":
+		return Pick{}, false
+	case action == "cancel" || action == "abort":
+		return Pick{Kind: "cancel"}, true
+	case strings.HasPrefix(action, "select:"):
+		return Pick{Kind: "select", Item: r.Item, Output: action[7:]}, true
+	default:
+		return Pick{Kind: "command", Output: action}, true
+	}
 }
 
 // findSelectedItem recovers the full Item from the tree. The formatted action string
@@ -403,14 +433,14 @@ func renderFrame(c render.Canvas, s *core.State, cfg Config) {
 	}
 }
 
-// Run launches the interactive TUI. Returns the selected item's output string, or "" if cancelled.
-func Run(items []core.Item, cfg Config) (string, error) {
+// Run launches the interactive TUI and returns how it ended.
+func Run(items []core.Item, cfg Config) (Pick, error) {
 	screen, err := tcell.NewScreen()
 	if err != nil {
-		return "", fmt.Errorf("creating screen: %w", err)
+		return Pick{}, fmt.Errorf("creating screen: %w", err)
 	}
 	if err := screen.Init(); err != nil {
-		return "", fmt.Errorf("initializing screen: %w", err)
+		return Pick{}, fmt.Errorf("initializing screen: %w", err)
 	}
 	defer screen.Fini()
 
@@ -435,15 +465,9 @@ func Run(items []core.Item, cfg Config) (string, error) {
 		switch ev := ev.(type) {
 		case *tcell.EventKey:
 			shift := ev.Modifiers()&tcell.ModShift != 0
-			raw := core.HandleKeyEvent(s, ev.Key(), ev.Rune(), shift, cfg, searchCols)
-			action := processAction(s, raw)
-			switch {
-			case action == "":
-				// handled internally
-			case action == "cancel":
-				return "", nil
-			case len(action) > 7 && action[:7] == "select:":
-				return action[7:], nil
+			r := core.HandleKeyEventResult(s, ev.Key(), ev.Rune(), shift, cfg, searchCols)
+			if pick, ok := endingPick(processAction(s, r.Action), r); ok && pick.Kind != "command" {
+				return pick, nil
 			}
 		case *tcell.EventResize:
 			screen.Sync()
@@ -487,7 +511,7 @@ func applyFrontendConfig(s *core.State, cfg Config) {
 }
 
 // runWithSession renders directly to a tcell screen, supporting tree mode + search switching.
-func runWithSession(screen tcell.Screen, items []core.Item, cfg Config) (string, error) {
+func runWithSession(screen tcell.Screen, items []core.Item, cfg Config) (Pick, error) {
 	s, searchCols := core.NewState(items, cfg)
 	applyFrontendConfig(s, cfg)
 	frontend.InjectCommandFolder(s, frontend.EngineVersion)
@@ -502,6 +526,7 @@ func runWithSession(screen tcell.Screen, items []core.Item, cfg Config) (string,
 	}
 
 	canvas := &tcellCanvas{screen: screen}
+	var inputItem core.Item // the input leaf whose text the prompt is taking
 
 	// Background sync check — runs once if overdue
 	initSyncCheck(s, cfg, func() {
@@ -529,49 +554,33 @@ func runWithSession(screen tcell.Screen, items []core.Item, cfg Config) (string,
 		case *tcell.EventKey:
 			// Shortcuts: Shift+letter (capitals) or Alt+letter bypass search input
 			if action, handled := handleShortcut(s, ev); handled {
-				switch {
-				case action == "":
-				case action == "cancel" || action == "abort":
-					return "", nil
-				case action == "unloaded":
-					return "unloaded", nil
-				case action == "loaded" || action == "synced":
-					return action, nil
-				default:
-					return action, nil
+				if pick, ok := endingPick(action, core.ActionResult{}); ok {
+					return pick, nil
 				}
 				break
 			}
 			wasRenaming := s.EditMode == "rename"
 			pending := pendingInput(s)
 			shift := ev.Modifiers()&tcell.ModShift != 0
-			raw := core.HandleUnifiedKey(s, ev.Key(), ev.Rune(), shift, cfg, searchCols)
-			if pick, ok := inputResult(pending, raw); ok {
+			r := core.HandleUnifiedKeyResult(s, ev.Key(), ev.Rune(), shift, cfg, searchCols)
+			if pick, ok := inputPick(pending, inputItem, r.Action); ok {
 				return pick, nil
 			}
 			// Auto-close inspect view only after a property edit is confirmed
 			if wasRenaming && s.EditMode == "" && s.InspectTargetIdx >= 0 {
 				cleanupInspect(s)
 			}
-			action := processAction(s, raw)
-			switch {
-			case action == "":
-				// handled internally (e.g. version toggle)
-			case action == "cancel" || action == "abort":
-				return "", nil
-			case action == "unloaded":
-				return "unloaded", nil
-			case action == "loaded" || action == "synced":
-				return action, nil
-			case action == "update":
+			action := processAction(s, r.Action)
+			if pending == "" && pendingInput(s) != "" {
+				inputItem = r.Item
+			}
+			if action == "update" {
 				screen.Fini()
 				RunUpdate(s)
 				os.Exit(0)
-			case len(action) > 7 && action[:7] == "select:":
-				return action[7:], nil
-			default:
-				// frontend action — return it
-				return action, nil
+			}
+			if pick, ok := endingPick(action, r); ok {
+				return pick, nil
 			}
 		case *tcell.EventResize:
 			screen.Sync()
@@ -583,35 +592,28 @@ func runWithSession(screen tcell.Screen, items []core.Item, cfg Config) (string,
 			}
 			btn := ev.Buttons()
 			_, y := ev.Position()
-			var raw string
+			var r core.ActionResult
 			switch {
 			case btn&tcell.Button1 != 0:
 				_, h := screen.Size()
-				raw = core.ClickUnifiedRow(s, y, cfg, h)
+				r = core.ClickUnifiedRowResult(s, y, cfg, h)
 			case btn&tcell.WheelUp != 0:
-				raw = core.HandleUnifiedKey(s, tcell.KeyUp, 0, false, cfg, searchCols)
+				r = core.HandleUnifiedKeyResult(s, tcell.KeyUp, 0, false, cfg, searchCols)
 			case btn&tcell.WheelDown != 0:
-				raw = core.HandleUnifiedKey(s, tcell.KeyDown, 0, false, cfg, searchCols)
-			default:
-				break
+				r = core.HandleUnifiedKeyResult(s, tcell.KeyDown, 0, false, cfg, searchCols)
 			}
-			action := processAction(s, raw)
-			switch {
-			case action == "":
-			case action == "cancel" || action == "abort":
-				return "", nil
-			case action == "unloaded":
-				return "unloaded", nil
-			case action == "loaded" || action == "synced":
-				return action, nil
-			case action == "update":
+			pending := pendingInput(s)
+			action := processAction(s, r.Action)
+			if pending == "" && pendingInput(s) != "" {
+				inputItem = r.Item
+			}
+			if action == "update" {
 				screen.Fini()
 				RunUpdate(s)
 				os.Exit(0)
-			case len(action) > 7 && action[:7] == "select:":
-				return action[7:], nil
-			default:
-				return action, nil
+			}
+			if pick, ok := endingPick(action, r); ok {
+				return pick, nil
 			}
 		}
 	}

@@ -97,7 +97,7 @@ The command tree may contain multiple items named "on" and "off" (e.g. under `wh
 4. `applyFrontendConfig(s, cfg)` -- copies FrontendName/Version/Commands + HidePalette to State
 5. `terminal.InjectCommandFolder(s, EngineVersion)` -- appends the `:` palette folder (visible at root; skipped entirely when `HidePalette` is set)
 6. `initSyncCheck` -- starts 1-second ticker goroutine that posts `tcell.EventInterrupt` for live redraws; checks bookmark staleness on a 20-minute interval
-7. Render loop: `drawUnified` -> `PollEvent` -> `HandleUnifiedKey` -> `processAction` -> repeat. Title bar is a dynamic status area managed via `State.SetTitle`/`ClearTitle`.
+7. Render loop: `drawUnified` -> `PollEvent` -> `HandleUnifiedKeyResult` -> `processAction` -> repeat, until a pick ends it. `Run` returns a `Pick`: its kind (`select`, `input`, `command`, `cancel`), the picked item itself, and the pick as text (`Output`, what the `fzt` CLI prints). A frontend acts on `Pick.Item`, never by looking the name up: two items can share a name (HOMECFG-20). Title bar is a dynamic status area managed via `State.SetTitle`/`ClearTitle`.
 
 ### Startup flow (WASM -- `cmd/wasm/main.go`)
 
