@@ -105,36 +105,7 @@ func main() {
 		if len(lines) == 0 {
 			os.Exit(1)
 		}
-		if *header != "" {
-			h := *header
-			if cfg.Tiered {
-				// the header has no depth column of its own
-				h = "0" + *delimiter + h
-			}
-			lines = append([]string{h}, lines...)
-			if cfg.HeaderLines == 0 {
-				cfg.HeaderLines = 1
-			}
-		}
-		items = core.ParseLines(lines, *delimiter, cfg.Tiered, cfg.ANSI)
-		// Render lists with the tree renderer fzt-automate uses (search box
-		// panel, icon column), so every fzt picker looks the same.
-		cfg.Tiered = true
-		cfg.TreeMode = true
-		start := 0
-		if *header != "" {
-			items[0].Depth = -1
-			start = 1
-		}
-		if *tiered {
-			linkTree(items[start:], start)
-		}
-		for i := start; i < len(items); i++ {
-			items[i].IsDir = isDir(items[i].Fields[0])
-			if !items[i].HasChildren {
-				markInput(&items[i], *inputCol)
-			}
-		}
+		items = stdinItems(lines, &cfg, *header, *inputCol)
 	}
 
 	if *filter != "" {
@@ -216,9 +187,8 @@ func markInput(item *core.Item, col int) {
 }
 
 // linkTree makes depth-prefixed rows a tree, as LoadYAML does for a YAML menu:
-// a row's parent is the nearest earlier row one level shallower. rows starts at
-// index base of the full item list.
-func linkTree(rows []core.Item, base int) {
+// a row's parent is the nearest earlier row one level shallower.
+func linkTree(rows []core.Item) {
 	var stack []int // indices into rows, shallowest first
 	for i := range rows {
 		for len(stack) > 0 && rows[stack[len(stack)-1]].Depth >= rows[i].Depth {
@@ -228,11 +198,52 @@ func linkTree(rows []core.Item, base int) {
 		rows[i].Path = rows[i].Fields[0]
 		if len(stack) > 0 {
 			p := stack[len(stack)-1]
-			rows[i].ParentIdx = base + p
+			rows[i].ParentIdx = p
 			rows[i].Path = rows[p].Path + " › " + rows[i].Fields[0]
-			rows[p].Children = append(rows[p].Children, base+i)
+			rows[p].Children = append(rows[p].Children, i)
 			rows[p].HasChildren = true
 		}
 		stack = append(stack, i)
 	}
+}
+
+// stdinItems builds the picker's items from piped lines: header first, then the
+// rows, linked into a tree when cfg.Tiered is set.
+func stdinItems(lines []string, cfg *tui.Config, header string, inputCol int) []core.Item {
+	tiered := cfg.Tiered
+	if header != "" {
+		h := header
+		if tiered {
+			// the header has no depth column of its own
+			h = "0" + cfg.Delimiter + h
+		}
+		lines = append([]string{h}, lines...)
+		if cfg.HeaderLines == 0 {
+			cfg.HeaderLines = 1
+		}
+	}
+	items := core.ParseLines(lines, cfg.Delimiter, tiered, cfg.ANSI)
+	// Render lists with the tree renderer fzt-automate uses (search box
+	// panel, icon column), so every fzt picker looks the same.
+	cfg.Tiered = true
+	cfg.TreeMode = true
+	start := cfg.HeaderLines
+	if start > len(items) {
+		start = len(items)
+	}
+	if header != "" {
+		items[0].Depth = -1
+	}
+	if tiered {
+		// The state sets header lines apart, so a parent index counts from the
+		// first row after them.
+		linkTree(items[start:])
+	}
+	for i := start; i < len(items); i++ {
+		items[i].IsDir = isDir(items[i].Fields[0])
+		if !items[i].HasChildren {
+			markInput(&items[i], inputCol)
+		}
+	}
+	return items
 }

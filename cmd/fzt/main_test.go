@@ -3,6 +3,7 @@ package main
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/romaine-life/fzt-terminal/tui"
@@ -40,13 +41,22 @@ func TestDirectoryLinesGetFolderIcon(t *testing.T) {
 }
 
 func TestTieredRowsOpenAsSubMenus(t *testing.T) {
+	// The tmux palette's shape: a header, then a folder whose first child follows it.
 	lines := []string{"0\tmove-tab\tMove the tab", "1\twork\tsession\tid-work", "1\tplay\tsession\tid-play", "0\tkill-pane\tDestroy the pane\tid-kill"}
-	items := core.ParseLines(lines, "\t", true, false)
-	linkTree(items, 0)
-	if !items[0].HasChildren || items[1].ParentIdx != 0 || items[2].ParentIdx != 0 || items[3].ParentIdx != -1 {
-		t.Fatalf("tree not linked: %+v", items)
+	cfg := tui.Config{Layout: "reverse", HidePalette: true, Tiered: true, DepthPenalty: 5, Delimiter: "\t", AcceptNth: []int{3}}
+	items := stdinItems(lines, &cfg, "name\tdescription", 0)
+	data := items[cfg.HeaderLines:]
+	if !data[0].HasChildren || data[1].ParentIdx != 0 || data[2].ParentIdx != 0 || data[3].ParentIdx != -1 {
+		t.Fatalf("tree not linked: %+v", data)
 	}
-	cfg := tui.Config{Layout: "reverse", HidePalette: true, TreeMode: true, Tiered: true, DepthPenalty: 5, AcceptNth: []int{3}}
+	// A parent loop made the first search spin forever (FZT-52): search must return.
+	done := make(chan struct{})
+	go func() { tui.Simulate(items, cfg, "w", 80, 20, false); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("searching hung")
+	}
 	s, searchCols := core.NewState(items, cfg)
 	ctx := s.TopCtx()
 	ctx.TreeExpanded = make(map[int]bool)
