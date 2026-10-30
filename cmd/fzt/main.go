@@ -117,15 +117,15 @@ func main() {
 		return
 	}
 
-	result, err := tui.Run(items, cfg)
+	pick, err := tui.Run(items, cfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "fzt: %v\n", err)
 		os.Exit(2)
 	}
-	if result == "" {
+	if pick.Kind == "cancel" {
 		os.Exit(130)
 	}
-	fmt.Println(result)
+	fmt.Println(pick.Output)
 }
 
 func readStdin() ([]string, error) {
