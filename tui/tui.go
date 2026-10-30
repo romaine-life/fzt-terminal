@@ -1186,15 +1186,16 @@ func drawBorderTopWithTitle(c render.Canvas, w, y int, title, pos string, titleS
 		if maxTitle < 1 {
 			return
 		}
-		if len(titleRunes) > maxTitle {
-			titleRunes = titleRunes[:maxTitle]
+		for cellWidth(titleRunes) > maxTitle {
+			titleRunes = titleRunes[:len(titleRunes)-1]
 		}
+		titleW := cellWidth(titleRunes)
 		var startX int
 		switch pos {
 		case "center":
-			startX = (w - len(titleRunes) - 2) / 2
+			startX = (w - titleW - 2) / 2
 		case "right":
-			startX = w - len(titleRunes) - 3 // 1 corner + 1 - minimum on right, plus space pad
+			startX = w - titleW - 3 // 1 corner + 1 - minimum on right, plus space pad
 		default: // "left"
 			startX = 2
 		}
@@ -1219,10 +1220,15 @@ func drawBorderTopWithTitle(c render.Canvas, w, y int, title, pos string, titleS
 			tStyle = tStyle.Reverse(true)
 		}
 		c.SetContent(startX, y, ' ', nil, borderStyle)
-		for i, r := range titleRunes {
-			c.SetContent(startX+1+i, y, r, nil, tStyle)
+		x := startX + 1
+		for _, r := range titleRunes {
+			c.SetContent(x, y, r, nil, tStyle)
+			if runeCells(r) == 2 {
+				c.SetContent(x+1, y, ' ', nil, tStyle)
+			}
+			x += runeCells(r)
 		}
-		c.SetContent(startX+1+len(titleRunes), y, ' ', nil, borderStyle)
+		c.SetContent(x, y, ' ', nil, borderStyle)
 	}
 
 	// Sync icon pinned to top-right of border
@@ -1254,6 +1260,24 @@ func drawBorderTopWithTitle(c render.Canvas, w, y int, title, pos string, titleS
 		}
 		c.SetContent(lStart+1+len(lRunes), y, ' ', nil, borderStyle)
 	}
+}
+
+// runeCells is how many cells a rune takes in a border title: Nerd Font
+// icons (private use area, or beyond the BMP) take two, as in tree rows and
+// the picker's GDI renderer.
+func runeCells(r rune) int {
+	if r > 0xFFFF || (r >= 0xE000 && r <= 0xF8FF) {
+		return 2
+	}
+	return 1
+}
+
+func cellWidth(runes []rune) int {
+	n := 0
+	for _, r := range runes {
+		n += runeCells(r)
+	}
+	return n
 }
 
 func drawBorderBottom(c render.Canvas, w, y int) {

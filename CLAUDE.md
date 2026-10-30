@@ -256,6 +256,7 @@ Menu CRUD used to live in `packages/routes/` here (`@nelsong6/fzt-terminal-route
 ### 2026-10-29
 
 1. **Scoped view rendering** -- With `Config.ScopedView` (fzt engine), `drawUnified` shows the current folder's full path in the prompt bar in place of the scope-word breadcrumb, cut from the left to half the bar, and rows are not indented. With `FoldersOnly` too, the hint reads "Enter picks this folder, or type to search…" while nothing is under the cursor. Built for fzt-picker, whose in-place expansion pushed a folder's contents off screen.
+2. **Folder picker hint and icon titles** -- The scoped-view folder picker's hint reads "Enter picks this folder, Right opens one, or type to search…", matching fzt v0.2.77's Enter-picks-folders. `drawBorderTopWithTitle` gives a Nerd Font icon two cells (same rule as tree rows and the picker's GDI renderer), so a title can open with one, e.g. fzt-picker's "󰉋 Folder picker". OpenProject FZT-51.
 
 ### 2026-10-18
 

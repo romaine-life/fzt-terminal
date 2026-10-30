@@ -197,7 +197,7 @@ func drawUnified(c render.Canvas, s *core.State, cfg Config, w, startY, h int) {
 	} else if ctx.SearchActive || len(ctx.Scope) > 1 {
 		hint := "search\u2026"
 		if cfg.ScopedView && cfg.FoldersOnly && len(ctx.Scope) > 1 && ctx.TreeCursor < 0 {
-			hint = "Enter picks this folder, or type to search\u2026"
+			hint = "Enter picks this folder, Right opens one, or type to search\u2026"
 		}
 		hintStyle := tcell.StyleDefault.Foreground(HintFg).Italic(true).Background(promptBg)
 		drawText(c, qx, y, hint, hintStyle, pw-promptLen-scopeLen)
