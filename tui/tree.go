@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -64,7 +65,7 @@ func drawUnified(c render.Canvas, s *core.State, cfg Config, w, startY, h int) {
 		effectiveNameCol = 12 // minimum so headers don't collapse
 	}
 	for _, row := range visible {
-		indent := row.Item.Depth * 2
+		indent := rowIndent(row, cfg)
 		nameW := ctx.NameColWidth + ctx.ColGap - indent
 		if len(row.Item.Fields) > 0 {
 			nameLen := len([]rune(row.Item.Fields[0])) + 1
@@ -134,8 +135,14 @@ func drawUnified(c render.Canvas, s *core.State, cfg Config, w, startY, h int) {
 		scopeLen++
 	}
 
-	// Scope breadcrumb -- just the word greyed out with a space after it.
-	if len(ctx.Scope) > 1 {
+	// Scope breadcrumb -- scoped view shows the folder's full path; otherwise
+	// just the word greyed out with a space after it.
+	if cfg.ScopedView && len(ctx.Scope) > 1 {
+		lockedStyle := tcell.StyleDefault.Foreground(PathFg).Background(promptBg)
+		path := scopedPath(ctx, (pw-promptLen-scopeLen)/2)
+		drawText(c, tx+scopeLen, y, path, lockedStyle, pw-promptLen-scopeLen)
+		scopeLen += len([]rune(path)) + 1
+	} else if len(ctx.Scope) > 1 {
 		lockedStyle := tcell.StyleDefault.Foreground(PathFg).Background(promptBg)
 		for si := 1; si < len(ctx.Scope); si++ {
 			level := ctx.Scope[si]
@@ -188,8 +195,12 @@ func drawUnified(c render.Canvas, s *core.State, cfg Config, w, startY, h int) {
 			}
 		}
 	} else if ctx.SearchActive || len(ctx.Scope) > 1 {
+		hint := "search\u2026"
+		if cfg.ScopedView && cfg.FoldersOnly && len(ctx.Scope) > 1 && ctx.TreeCursor < 0 {
+			hint = "Enter picks this folder, or type to search\u2026"
+		}
 		hintStyle := tcell.StyleDefault.Foreground(HintFg).Italic(true).Background(promptBg)
-		drawText(c, qx, y, "search\u2026", hintStyle, pw-promptLen-scopeLen)
+		drawText(c, qx, y, hint, hintStyle, pw-promptLen-scopeLen)
 		c.ShowCursor(qx, y)
 	} else {
 		hintStyle := tcell.StyleDefault.Foreground(HintFg).Italic(true).Background(promptBg)
@@ -294,7 +305,7 @@ func drawTreeRow(c render.Canvas, row core.TreeRow, isSelected, isTopMatch bool,
 	x += 2
 
 	// Indentation
-	indent := row.Item.Depth * 2
+	indent := rowIndent(row, cfg)
 	for i := 0; i < indent; i++ {
 		style := tcell.StyleDefault
 		if hasBg {
@@ -395,4 +406,27 @@ func drawHighlightedText(c render.Canvas, x, y int, text string, baseStyle tcell
 		}
 		c.SetContent(x+i, y, r, nil, style)
 	}
+}
+
+// rowIndent is a row's indentation in cells. The scoped view lists one
+// folder's children, so nothing is indented.
+func rowIndent(row core.TreeRow, cfg Config) int {
+	if cfg.ScopedView {
+		return 0
+	}
+	return row.Item.Depth * 2
+}
+
+// scopedPath is the current scope's full path with a trailing separator,
+// cut from the left to fit maxW.
+func scopedPath(ctx *core.TreeContext, maxW int) string {
+	path := core.ItemFullPath(ctx, ctx.Scope[len(ctx.Scope)-1].ParentIdx)
+	if !strings.HasSuffix(path, string(filepath.Separator)) {
+		path += string(filepath.Separator)
+	}
+	runes := []rune(path)
+	if maxW > 1 && len(runes) > maxW {
+		runes = append([]rune{'…'}, runes[len(runes)-maxW+1:]...)
+	}
+	return string(runes)
 }
