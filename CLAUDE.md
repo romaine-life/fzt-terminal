@@ -233,9 +233,11 @@ go test ./cmd/fzt
 
 ## CI
 
+`.github/workflows/ci.yml` runs on every pull request: `test` (vet + tests) and `dll` (builds `cmd/fztlib`), both required. `main` has the ruleset "main: require PR + green CI" (PR, squash only, required checks), so every change, the bot's dependency bumps included, lands through a pull request.
+
 Two manually-triggered workflows (Claude-driven):
 
-- **`.github/workflows/dispatch.yml`** (`workflow_dispatch`) — dependency bump path. Calls `go-dependency-update-template` to bump `github.com/romaine-life/fzt` + `github.com/romaine-life/fzt-frontend`, commit, push, and cut a release at the new sha.
+- **`.github/workflows/dispatch.yml`** (`workflow_dispatch`) — dependency bump path. Calls `go-dependency-update-template` to bump `github.com/romaine-life/fzt` + `github.com/romaine-life/fzt-frontend` on a `deps/<run id>` branch, open a PR, merge it once its checks pass, and cut a release at the merged sha.
 - **`.github/workflows/release.yml`** (`workflow_dispatch`) — direct-push release path for code changes. Calls `release-and-dispatch-template` to tag the current main. Shared `release-tag` concurrency group with `dispatch.yml`.
 
 Both cut a Go-module release (library consumers `go get` at the tag), then fire **`.github/workflows/build.yml`** with the new tag to build `cmd/fzt` for windows/linux/darwin and attach `fzt-<os>-<arch>[.exe]` to the release. Downstream Go-module consumers (`fzt-picker`, `fzt-automate`, `fzt-browser`) are updated manually per repo — no `repository_dispatch` fan-out.
