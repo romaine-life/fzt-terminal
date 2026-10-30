@@ -253,6 +253,10 @@ Menu CRUD used to live in `packages/routes/` here (`@nelsong6/fzt-terminal-route
 
 ## Change log
 
+### 2026-10-29
+
+1. **Scoped view rendering** -- With `Config.ScopedView` (fzt engine), `drawUnified` shows the current folder's full path in the prompt bar in place of the scope-word breadcrumb, cut from the left to half the bar, and rows are not indented. With `FoldersOnly` too, the hint reads "Enter picks this folder, or type to search…" while nothing is under the cursor. Built for fzt-picker, whose in-place expansion pushed a folder's contents off screen.
+
 ### 2026-10-18
 
 1. **Restored the interactive `fzt` CLI as `cmd/fzt`** -- The 2026-04-07 engine/terminal split moved the TUI here but dropped the CLI (`cmd/root.go` in the engine repo, last at `8b8d731^`), leaving the engine's scoring-only binary holding the `fzt` name. Every shell-config script that piped a list into `fzt` (`pop`, `ws-load`, `vcs`) silently stopped getting a picker. Ported the stdin/`--yaml`/`--filter` paths and the flags those scripts use onto today's `tui.Run`, using the stdlib `flag` package instead of cobra. Dropped flags with no current caller (`--simulate`, `--dir`, `--commands`, `--frontend-*`, `--update`). Motivation: Nelson wanted Tab completion to open his own picker and found the generic "pick from this list" mode he assumed existed was gone. Rejected homes: the engine (must stay TUI-free, and fzt-terminal already depends on it), fzt-automate (the `at` app with auth and sync, wrong tool for a generic picker), a new repo (another release pipeline for ~150 lines).
