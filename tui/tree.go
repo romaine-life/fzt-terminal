@@ -106,119 +106,121 @@ func drawUnified(c render.Canvas, s *core.State, cfg Config, w, startY, h int) {
 	}
 	promptLen := 2 // icon + space
 
-	// Top border of prompt bar
-	c.SetContent(borderOffset, y, '\u250c', nil, borderStyle) // +
-	for x := borderOffset + 1; x < w-borderOffset-1; x++ {
-		c.SetContent(x, y, '\u2500', nil, borderStyle) // -
-	}
-	c.SetContent(w-borderOffset-1, y, '\u2510', nil, borderStyle) // +
-	y++
+	if !cfg.HidePromptBar {
+		// Top border of prompt bar
+		c.SetContent(borderOffset, y, '\u250c', nil, borderStyle) // +
+		for x := borderOffset + 1; x < w-borderOffset-1; x++ {
+			c.SetContent(x, y, '\u2500', nil, borderStyle) // -
+		}
+		c.SetContent(w-borderOffset-1, y, '\u2510', nil, borderStyle) // +
+		y++
 
-	// Prompt content line with background
-	c.SetContent(borderOffset, y, '\u2502', nil, borderStyle) // |
-	for x := borderOffset + 1; x < w-borderOffset-1; x++ {
-		c.SetContent(x, y, ' ', nil, tcell.StyleDefault.Background(promptBg))
-	}
-	c.SetContent(w-borderOffset-1, y, '\u2502', nil, borderStyle) // |
+		// Prompt content line with background
+		c.SetContent(borderOffset, y, '\u2502', nil, borderStyle) // |
+		for x := borderOffset + 1; x < w-borderOffset-1; x++ {
+			c.SetContent(x, y, ' ', nil, tcell.StyleDefault.Background(promptBg))
+		}
+		c.SetContent(w-borderOffset-1, y, '\u2502', nil, borderStyle) // |
 
-	px := borderOffset + 1       // content starts inside the border
-	pw := w - borderOffset*2 - 2 // content width inside borders
-	// Prompt: [icon] [locked breadcrumb >] [query or nav preview]
-	c.SetContent(px, y, promptIcon, nil, promptIconStyle)
-	c.SetContent(px+1, y, ' ', nil, tcell.StyleDefault.Background(promptBg))
-	tx := px + promptLen // text position after icon + space
+		px := borderOffset + 1       // content starts inside the border
+		pw := w - borderOffset*2 - 2 // content width inside borders
+		// Prompt: [icon] [locked breadcrumb >] [query or nav preview]
+		c.SetContent(px, y, promptIcon, nil, promptIconStyle)
+		c.SetContent(px+1, y, ' ', nil, tcell.StyleDefault.Background(promptBg))
+		tx := px + promptLen // text position after icon + space
 
-	// Context breadcrumb -- ':' when in a pushed context (command mode)
-	scopeLen := 0
-	if len(s.Contexts) > 1 && ctx.PromptIcon != 0 {
-		lockedStyle := tcell.StyleDefault.Foreground(PathFg).Background(promptBg)
-		c.SetContent(tx+scopeLen, y, ctx.PromptIcon, nil, lockedStyle)
-		scopeLen++
-		c.SetContent(tx+scopeLen, y, ' ', nil, tcell.StyleDefault.Background(promptBg))
-		scopeLen++
-	}
+		// Context breadcrumb -- ':' when in a pushed context (command mode)
+		scopeLen := 0
+		if len(s.Contexts) > 1 && ctx.PromptIcon != 0 {
+			lockedStyle := tcell.StyleDefault.Foreground(PathFg).Background(promptBg)
+			c.SetContent(tx+scopeLen, y, ctx.PromptIcon, nil, lockedStyle)
+			scopeLen++
+			c.SetContent(tx+scopeLen, y, ' ', nil, tcell.StyleDefault.Background(promptBg))
+			scopeLen++
+		}
 
-	// Scope breadcrumb -- scoped view shows the folder's full path; otherwise
-	// just the word greyed out with a space after it.
-	if cfg.ScopedView && len(ctx.Scope) > 1 {
-		lockedStyle := tcell.StyleDefault.Foreground(PathFg).Background(promptBg)
-		path := scopedPath(ctx, (pw-promptLen-scopeLen)/2)
-		drawText(c, tx+scopeLen, y, path, lockedStyle, pw-promptLen-scopeLen)
-		scopeLen += len([]rune(path)) + 1
-	} else if len(ctx.Scope) > 1 {
-		lockedStyle := tcell.StyleDefault.Foreground(PathFg).Background(promptBg)
-		for si := 1; si < len(ctx.Scope); si++ {
-			level := ctx.Scope[si]
-			if level.ParentIdx >= 0 && level.ParentIdx < len(ctx.AllItems) {
-				name := ctx.AllItems[level.ParentIdx].Fields[0]
-				drawText(c, tx+scopeLen, y, name, lockedStyle, pw-promptLen-scopeLen)
-				scopeLen += len([]rune(name))
-				c.SetContent(tx+scopeLen, y, ' ', nil, lockedStyle)
-				scopeLen++
+		// Scope breadcrumb -- scoped view shows the folder's full path; otherwise
+		// just the word greyed out with a space after it.
+		if cfg.ScopedView && len(ctx.Scope) > 1 {
+			lockedStyle := tcell.StyleDefault.Foreground(PathFg).Background(promptBg)
+			path := scopedPath(ctx, (pw-promptLen-scopeLen)/2)
+			drawText(c, tx+scopeLen, y, path, lockedStyle, pw-promptLen-scopeLen)
+			scopeLen += len([]rune(path)) + 1
+		} else if len(ctx.Scope) > 1 {
+			lockedStyle := tcell.StyleDefault.Foreground(PathFg).Background(promptBg)
+			for si := 1; si < len(ctx.Scope); si++ {
+				level := ctx.Scope[si]
+				if level.ParentIdx >= 0 && level.ParentIdx < len(ctx.AllItems) {
+					name := ctx.AllItems[level.ParentIdx].Fields[0]
+					drawText(c, tx+scopeLen, y, name, lockedStyle, pw-promptLen-scopeLen)
+					scopeLen += len([]rune(name))
+					c.SetContent(tx+scopeLen, y, ' ', nil, lockedStyle)
+					scopeLen++
+				}
 			}
 		}
-	}
 
-	qx := tx + scopeLen // where editable query starts
+		qx := tx + scopeLen // where editable query starts
 
-	contentX := qx // where query or nav preview starts
-	contentW := pw - promptLen - scopeLen
+		contentX := qx // where query or nav preview starts
+		contentW := pw - promptLen - scopeLen
 
-	if s.PromptMode != "" {
-		queryStyle := tcell.StyleDefault.Foreground(QueryFg).Background(promptBg)
-		if len(s.PromptQuery) > 0 {
-			drawText(c, contentX, y, string(s.PromptQuery), queryStyle, contentW)
-		} else {
-			hint := s.PromptPlaceholder
-			if hint == "" {
-				hint = "search\u2026"
+		if s.PromptMode != "" {
+			queryStyle := tcell.StyleDefault.Foreground(QueryFg).Background(promptBg)
+			if len(s.PromptQuery) > 0 {
+				drawText(c, contentX, y, string(s.PromptQuery), queryStyle, contentW)
+			} else {
+				hint := s.PromptPlaceholder
+				if hint == "" {
+					hint = "search\u2026"
+				}
+				hintStyle := tcell.StyleDefault.Foreground(HintFg).Italic(true).Background(promptBg)
+				drawText(c, contentX, y, hint, hintStyle, contentW)
+			}
+			c.ShowCursor(contentX+s.PromptCursor, y)
+		} else if s.EditMode == "rename" {
+			// Rename mode — show edit buffer as editable text
+			renameStyle := tcell.StyleDefault.Foreground(QueryFg).Background(promptBg)
+			drawText(c, contentX, y, string(s.EditBuffer), renameStyle, contentW)
+			c.ShowCursor(contentX+len(s.EditBuffer), y)
+		} else if hasQuery {
+			queryStyle := tcell.StyleDefault.Foreground(QueryFg).Background(promptBg)
+			drawText(c, contentX, y, string(ctx.Query), queryStyle, contentW)
+			c.ShowCursor(contentX+ctx.Cursor, y)
+
+			// Ghost autocomplete text: show remaining chars of top match if query is a prefix
+			if ctx.Cursor == len(ctx.Query) && len(ctx.Filtered) > 0 && len(ctx.Filtered[0].Fields) > 0 {
+				name := ctx.Filtered[0].Fields[0]
+				nameRunes := []rune(name)
+				if len(nameRunes) > len(ctx.Query) && strings.EqualFold(string(nameRunes[:len(ctx.Query)]), string(ctx.Query)) {
+					ghost := string(nameRunes[len(ctx.Query):])
+					ghostStyle := tcell.StyleDefault.Foreground(GhostFg).Background(promptBg)
+					drawText(c, contentX+len(ctx.Query), y, ghost, ghostStyle, contentW-len(ctx.Query))
+				}
+			}
+		} else if ctx.SearchActive || len(ctx.Scope) > 1 {
+			hint := "search\u2026"
+			if cfg.ScopedView && cfg.FoldersOnly && len(ctx.Scope) > 1 && ctx.TreeCursor < 0 {
+				hint = "Enter picks this folder, Right opens one, or type to search\u2026"
 			}
 			hintStyle := tcell.StyleDefault.Foreground(HintFg).Italic(true).Background(promptBg)
-			drawText(c, contentX, y, hint, hintStyle, contentW)
+			drawText(c, qx, y, hint, hintStyle, pw-promptLen-scopeLen)
+			c.ShowCursor(qx, y)
+		} else {
+			hintStyle := tcell.StyleDefault.Foreground(HintFg).Italic(true).Background(promptBg)
+			drawText(c, qx, y, "type to search\u2026", hintStyle, pw-promptLen-scopeLen)
+			c.ShowCursor(qx, y)
 		}
-		c.ShowCursor(contentX+s.PromptCursor, y)
-	} else if s.EditMode == "rename" {
-		// Rename mode — show edit buffer as editable text
-		renameStyle := tcell.StyleDefault.Foreground(QueryFg).Background(promptBg)
-		drawText(c, contentX, y, string(s.EditBuffer), renameStyle, contentW)
-		c.ShowCursor(contentX+len(s.EditBuffer), y)
-	} else if hasQuery {
-		queryStyle := tcell.StyleDefault.Foreground(QueryFg).Background(promptBg)
-		drawText(c, contentX, y, string(ctx.Query), queryStyle, contentW)
-		c.ShowCursor(contentX+ctx.Cursor, y)
+		y++
 
-		// Ghost autocomplete text: show remaining chars of top match if query is a prefix
-		if ctx.Cursor == len(ctx.Query) && len(ctx.Filtered) > 0 && len(ctx.Filtered[0].Fields) > 0 {
-			name := ctx.Filtered[0].Fields[0]
-			nameRunes := []rune(name)
-			if len(nameRunes) > len(ctx.Query) && strings.EqualFold(string(nameRunes[:len(ctx.Query)]), string(ctx.Query)) {
-				ghost := string(nameRunes[len(ctx.Query):])
-				ghostStyle := tcell.StyleDefault.Foreground(GhostFg).Background(promptBg)
-				drawText(c, contentX+len(ctx.Query), y, ghost, ghostStyle, contentW-len(ctx.Query))
-			}
+		// Bottom border of prompt bar
+		c.SetContent(borderOffset, y, '\u2514', nil, borderStyle) // +
+		for x := borderOffset + 1; x < w-borderOffset-1; x++ {
+			c.SetContent(x, y, '\u2500', nil, borderStyle) // -
 		}
-	} else if ctx.SearchActive || len(ctx.Scope) > 1 {
-		hint := "search\u2026"
-		if cfg.ScopedView && cfg.FoldersOnly && len(ctx.Scope) > 1 && ctx.TreeCursor < 0 {
-			hint = "Enter picks this folder, Right opens one, or type to search\u2026"
-		}
-		hintStyle := tcell.StyleDefault.Foreground(HintFg).Italic(true).Background(promptBg)
-		drawText(c, qx, y, hint, hintStyle, pw-promptLen-scopeLen)
-		c.ShowCursor(qx, y)
-	} else {
-		hintStyle := tcell.StyleDefault.Foreground(HintFg).Italic(true).Background(promptBg)
-		drawText(c, qx, y, "type to search\u2026", hintStyle, pw-promptLen-scopeLen)
-		c.ShowCursor(qx, y)
+		c.SetContent(w-borderOffset-1, y, '\u2518', nil, borderStyle) // +
+		y++
 	}
-	y++
-
-	// Bottom border of prompt bar
-	c.SetContent(borderOffset, y, '\u2514', nil, borderStyle) // +
-	for x := borderOffset + 1; x < w-borderOffset-1; x++ {
-		c.SetContent(x, y, '\u2500', nil, borderStyle) // -
-	}
-	c.SetContent(w-borderOffset-1, y, '\u2518', nil, borderStyle) // +
-	y++
 
 	// Headers
 	if len(ctx.Headers) > 0 {
