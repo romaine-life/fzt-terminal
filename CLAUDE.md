@@ -99,6 +99,10 @@ The command tree may contain multiple items named "on" and "off" (e.g. under `wh
 6. `initSyncCheck` -- starts 1-second ticker goroutine that posts `tcell.EventInterrupt` for live redraws; checks bookmark staleness on a 20-minute interval
 7. Render loop: `drawUnified` -> `PollEvent` -> `HandleUnifiedKeyResult` -> `processAction` -> repeat, until a pick ends it. `Run` returns a `Pick`: its kind (`select`, `input`, `command`, `cancel`), the picked item itself, and the pick as text (`Output`, what the `fzt` CLI prints). A frontend acts on `Pick.Item`, never by looking the name up: two items can share a name (HOMECFG-20). Title bar is a dynamic status area managed via `State.SetTitle`/`ClearTitle`.
 
+### Long-lived menu (`tui.RunLoop`)
+
+`RunLoop(items, cfg, setup, onPick)` is `Run` for a frontend that stays open (fzt-automate `--system`, FZT-64). Every pick goes to `onPick` on the menu's goroutine with the menu still drawn, and the menu then returns to rest (search cleared); Escape at the top clears instead of ending. Work that takes time runs on another goroutine and reaches the menu through `*Live`: `Update(func(*core.State))`, `Reload(items)` (a fresh state that keeps the panel and overrun marks) and `OnAbort(f)` (what Escape does while the state is `Frozen`). `Run` and `RunLoop` share `sessionLoop`. With `Config.ShowPanel`, `drawUnified` reserves `core.PanelLines` rows above the prompt bar for `State.Panel` (the latest result, colored by `Panel.Style`, an ellipsis when `Clipped`), and rows in `State.Overruns` carry a red `!`. An entry with `Item.Input` asks for its text in the prompt box before it is picked, as an input leaf does, and `:inspect` shows and edits `quick` and `input` on command entries.
+
 ### Startup flow (WASM -- `cmd/wasm/main.go`)
 
 1. JS calls `fzt.loadYAML(yaml)` -> stores parsed items

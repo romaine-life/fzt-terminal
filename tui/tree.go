@@ -57,6 +57,11 @@ func drawUnified(c render.Canvas, s *core.State, cfg Config, w, startY, h int) {
 		borderOffset = 1
 	}
 
+	if cfg.ShowPanel {
+		drawPanel(c, s.Panel, borderOffset, y, w)
+		y += core.PanelLines
+	}
+
 	hasQuery := len(ctx.Query) > 0
 	visible := core.TreeVisibleItems(s)
 
@@ -286,6 +291,10 @@ func drawUnified(c render.Canvas, s *core.State, cfg Config, w, startY, h int) {
 		isSelected := vi == ctx.TreeCursor
 		isTopMatch := hasQuery && row.ItemIdx == topMatchIdx && !isSelected
 		drawTreeRow(c, row, isSelected, isTopMatch, ctx, cfg, borderOffset, y+i, w, effectiveNameCol)
+		if s.Overruns[row.Item.Path] {
+			// Its last run printed more than the panel holds.
+			c.SetContent(w-borderOffset-2, y+i, '!', nil, tcell.StyleDefault.Foreground(TitleErrorFg).Bold(true))
+		}
 	}
 
 	if cfg.Border {
@@ -445,4 +454,38 @@ func scopedPath(ctx *core.TreeContext, maxW int) string {
 		runes = append([]rune{'…'}, runes[len(runes)-maxW+1:]...)
 	}
 	return string(runes)
+}
+
+// drawPanel draws the latest command result in the core.PanelLines rows at y,
+// colored by how it ended. Empty rows stay blank so the layout never moves.
+func drawPanel(c render.Canvas, p core.Panel, borderOffset, y, w int) {
+	fg := TitleNeutralFg
+	switch p.Style {
+	case core.PanelOK:
+		fg = TitleSuccessFg
+	case core.PanelFailed:
+		fg = TitleErrorFg
+	}
+	style := tcell.StyleDefault.Foreground(fg)
+	x := borderOffset + 1
+	width := w - borderOffset*2 - 2
+	for i := 0; i < core.PanelLines; i++ {
+		if i >= len(p.Lines) {
+			continue
+		}
+		line := []rune(p.Lines[i])
+		if p.Clipped && i == core.PanelLines-1 {
+			// The ellipsis always shows, even on a line cut at the edge.
+			if len(line) > width-2 {
+				line = line[:max(width-2, 0)]
+			}
+			line = append(line, ' ', '…')
+		}
+		for j, r := range line {
+			if j >= width {
+				break
+			}
+			c.SetContent(x+j, y+i, r, nil, style)
+		}
+	}
 }

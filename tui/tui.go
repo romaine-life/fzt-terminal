@@ -180,6 +180,8 @@ func handleShiftEnter(s *core.State) string {
 				props = append(props, struct{ key, val string }{"url", item.Action.Target})
 			} else if item.Action.Target != "" {
 				props = append(props, struct{ key, val string }{"action", item.Action.Target})
+				props = append(props, struct{ key, val string }{"quick", core.FormatQuick(item.Quick)})
+				props = append(props, struct{ key, val string }{"input", item.Input})
 			}
 		}
 
@@ -312,6 +314,11 @@ func processAction(s *core.State, action string) string {
 		// switches to free text, hinted by the action's target.
 		if item.Action != nil && item.Action.Type == "input" {
 			s.EnterPromptMode(inputMode, action[7:], 0, item.Action.Target)
+			return ""
+		}
+		// So does a menu entry that declares an input: its command gets the text.
+		if item.Input != "" {
+			s.EnterPromptMode(inputMode, action[7:], 0, item.Input)
 			return ""
 		}
 	}
@@ -512,6 +519,73 @@ func applyFrontendConfig(s *core.State, cfg Config) {
 
 // runWithSession renders directly to a tcell screen, supporting tree mode + search switching.
 func runWithSession(screen tcell.Screen, items []core.Item, cfg Config) (Pick, error) {
+	var ended Pick
+	sessionLoop(screen, items, cfg, nil, func(p Pick) bool {
+		ended = p
+		return true
+	})
+	return ended, nil
+}
+
+// RunLoop is Run for a frontend that stays open: every pick goes to onPick
+// with the menu still on screen, and the menu carries on after it. onPick runs
+// on the menu's goroutine and must return quickly; work that takes time runs
+// elsewhere and reaches the menu through live. setup, if set, runs once
+// before the first frame, for state the frontend restores. Escape at the top
+// clears the search instead of ending. RunLoop returns only on a self-update,
+// which exits the process.
+func RunLoop(items []core.Item, cfg Config, setup func(*Live), onPick func(Pick, *Live)) error {
+	screen, err := tcell.NewScreen()
+	if err != nil {
+		return fmt.Errorf("creating screen: %w", err)
+	}
+	if err := screen.Init(); err != nil {
+		return fmt.Errorf("initializing screen: %w", err)
+	}
+	defer screen.Fini()
+	screen.SetStyle(tcell.StyleDefault.Background(tcell.ColorDefault).Foreground(tcell.ColorDefault))
+	screen.EnablePaste()
+	screen.EnableMouse(tcell.MouseButtonEvents)
+	defer screen.DisableMouse()
+
+	live := &Live{screen: screen}
+	if setup != nil {
+		setup(live)
+	}
+	sessionLoop(screen, items, cfg, live, func(p Pick) bool {
+		onPick(p, live)
+		return false
+	})
+	return nil
+}
+
+// Live changes a RunLoop menu from any goroutine. Each call is queued to the
+// menu's goroutine, applied in order, and followed by a redraw.
+type Live struct {
+	screen tcell.Screen
+	abort  func() // menu goroutine only
+}
+
+type liveEvent struct {
+	update func(*core.State)
+	reload []core.Item
+	abort  *func()
+}
+
+func (l *Live) post(e liveEvent) { l.screen.PostEvent(tcell.NewEventInterrupt(e)) }
+
+// Update runs f against the menu's state, then redraws.
+func (l *Live) Update(f func(*core.State)) { l.post(liveEvent{update: f}) }
+
+// Reload replaces the menu's items, as a fresh start would, keeping the panel.
+func (l *Live) Reload(items []core.Item) { l.post(liveEvent{reload: items}) }
+
+// OnAbort sets what Escape does while the menu is frozen (nil: nothing). It is
+// how a frontend lets the user give up waiting on a command.
+func (l *Live) OnAbort(f func()) { l.post(liveEvent{abort: &f}) }
+
+// newLoopState builds the menu's state from items.
+func newLoopState(items []core.Item, cfg Config) (*core.State, []int) {
 	s, searchCols := core.NewState(items, cfg)
 	applyFrontendConfig(s, cfg)
 	frontend.InjectCommandFolder(s, frontend.EngineVersion)
@@ -519,6 +593,25 @@ func runWithSession(screen tcell.Screen, items []core.Item, cfg Config) (Pick, e
 	ctx.TreeExpanded = make(map[int]bool)
 	ctx.QueryExpanded = make(map[int]bool)
 	ctx.TreeCursor = -1
+	return s, searchCols
+}
+
+// clearSearch puts the top of the menu back to its resting state.
+func clearSearch(s *core.State) {
+	ctx := s.TopCtx()
+	ctx.Query = nil
+	ctx.Cursor = 0
+	ctx.Filtered = nil
+	ctx.SearchActive = false
+	ctx.NavMode = false
+	ctx.TreeCursor = -1
+	ctx.QueryExpanded = make(map[int]bool)
+}
+
+// sessionLoop draws the menu and handles input until onPick returns true.
+// live is nil for a one-shot Run.
+func sessionLoop(screen tcell.Screen, items []core.Item, cfg Config, live *Live, onPick func(Pick) bool) {
+	s, searchCols := newLoopState(items, cfg)
 
 	// Pre-expand to focused directory if specified
 	if cfg.FocusedDir != "" && s.Provider != nil {
@@ -536,12 +629,37 @@ func runWithSession(screen tcell.Screen, items []core.Item, cfg Config) (Pick, e
 	// 200ms heartbeat — fast enough for title pulses to settle (~350ms pulse
 	// window) without visible lag; still cheap because the draw is diffed.
 	ticker := time.NewTicker(200 * time.Millisecond)
-	defer ticker.Stop()
+	done := make(chan struct{})
+	defer func() {
+		ticker.Stop()
+		close(done)
+	}()
 	go func() {
-		for range ticker.C {
-			screen.PostEvent(tcell.NewEventInterrupt(nil))
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				screen.PostEvent(tcell.NewEventInterrupt(nil))
+			}
 		}
 	}()
+
+	// end hands a pick to the frontend; true ends the loop. A loop frontend
+	// keeps going after a cancel, with the search cleared.
+	// Each pick also leaves the menu at rest, ready for the next.
+	end := func(p Pick) bool {
+		if live == nil {
+			return onPick(p)
+		}
+		if p.Kind != "command" {
+			clearSearch(s)
+		}
+		if p.Kind == "cancel" {
+			return false
+		}
+		return onPick(p)
+	}
 
 	for {
 		screen.Clear()
@@ -552,10 +670,16 @@ func runWithSession(screen tcell.Screen, items []core.Item, cfg Config) (Pick, e
 		ev := screen.PollEvent()
 		switch ev := ev.(type) {
 		case *tcell.EventKey:
+			if s.Frozen {
+				if ev.Key() == tcell.KeyEscape && live != nil && live.abort != nil {
+					live.abort()
+				}
+				break
+			}
 			// Shortcuts: Shift+letter (capitals) or Alt+letter bypass search input
 			if action, handled := handleShortcut(s, ev); handled {
-				if pick, ok := endingPick(action, core.ActionResult{}); ok {
-					return pick, nil
+				if pick, ok := endingPick(action, core.ActionResult{}); ok && end(pick) {
+					return
 				}
 				break
 			}
@@ -564,7 +688,10 @@ func runWithSession(screen tcell.Screen, items []core.Item, cfg Config) (Pick, e
 			shift := ev.Modifiers()&tcell.ModShift != 0
 			r := core.HandleUnifiedKeyResult(s, ev.Key(), ev.Rune(), shift, cfg, searchCols)
 			if pick, ok := inputPick(pending, inputItem, r.Action); ok {
-				return pick, nil
+				if end(pick) {
+					return
+				}
+				break
 			}
 			// Auto-close inspect view only after a property edit is confirmed
 			if wasRenaming && s.EditMode == "" && s.InspectTargetIdx >= 0 {
@@ -579,15 +706,28 @@ func runWithSession(screen tcell.Screen, items []core.Item, cfg Config) (Pick, e
 				RunUpdate(s)
 				os.Exit(0)
 			}
-			if pick, ok := endingPick(action, r); ok {
-				return pick, nil
+			if pick, ok := endingPick(action, r); ok && end(pick) {
+				return
 			}
 		case *tcell.EventResize:
 			screen.Sync()
 		case *tcell.EventInterrupt:
-			// tick — redraw picks up countdown updates from drawUnified
+			// A tick redraws countdowns; a Live call changes the menu first.
+			if e, ok := ev.Data().(liveEvent); ok {
+				switch {
+				case e.update != nil:
+					e.update(s)
+				case e.reload != nil:
+					panel, overruns := s.Panel, s.Overruns
+					s, searchCols = newLoopState(e.reload, cfg)
+					s.Panel, s.Overruns = panel, overruns
+					inputItem = core.Item{}
+				case e.abort != nil:
+					live.abort = *e.abort
+				}
+			}
 		case *tcell.EventMouse:
-			if s.EditMode != "" {
+			if s.EditMode != "" || s.Frozen {
 				break
 			}
 			btn := ev.Buttons()
@@ -612,8 +752,8 @@ func runWithSession(screen tcell.Screen, items []core.Item, cfg Config) (Pick, e
 				RunUpdate(s)
 				os.Exit(0)
 			}
-			if pick, ok := endingPick(action, r); ok {
-				return pick, nil
+			if pick, ok := endingPick(action, r); ok && end(pick) {
+				return
 			}
 		}
 	}
