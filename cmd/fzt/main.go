@@ -19,6 +19,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/romaine-life/fzt-terminal/tui"
 	"github.com/romaine-life/fzt/core"
@@ -45,6 +46,7 @@ func main() {
 		yamlPath     = flag.String("yaml", "", "Load a hierarchical tree from a YAML file (implies tree mode)")
 		title        = flag.String("title", "", "Title shown on the border")
 		titlePos     = flag.String("title-pos", "left", "Title position: 'left', 'center' or 'right'")
+		tagsCol      = flag.Int("tags-col", 0, "Field index (1-based) holding a row's tags, separated by spaces or commas, for tag search (the : palette's tags toggle)")
 		inputCol     = flag.Int("input-col", 0, "Field index (1-based) that makes a row ask for text: a row with this field set prompts for text on Enter, the field as its hint, and prints the selection, a tab and the text")
 		version      = flag.Bool("version", false, "Print version and exit")
 	)
@@ -105,7 +107,7 @@ func main() {
 		if len(lines) == 0 {
 			os.Exit(1)
 		}
-		items = stdinItems(lines, &cfg, *header, *inputCol)
+		items = stdinItems(lines, &cfg, *header, *inputCol, *tagsCol)
 	}
 
 	if *filter != "" {
@@ -186,6 +188,17 @@ func markInput(item *core.Item, col int) {
 	item.Action = &core.ItemAction{Type: "input", Target: item.Fields[col-1]}
 }
 
+// setTags reads a row's tags from its col-th field (1-based). The renderer
+// draws only the first two fields, so the tags show only during a tag search.
+func setTags(item *core.Item, col int) {
+	if col < 1 || len(item.Fields) < col {
+		return
+	}
+	item.Tags = strings.FieldsFunc(item.Fields[col-1], func(r rune) bool {
+		return r == ',' || unicode.IsSpace(r)
+	})
+}
+
 // linkTree makes depth-prefixed rows a tree, as LoadYAML does for a YAML menu:
 // a row's parent is the nearest earlier row one level shallower.
 func linkTree(rows []core.Item) {
@@ -209,7 +222,7 @@ func linkTree(rows []core.Item) {
 
 // stdinItems builds the picker's items from piped lines: header first, then the
 // rows, linked into a tree when cfg.Tiered is set.
-func stdinItems(lines []string, cfg *tui.Config, header string, inputCol int) []core.Item {
+func stdinItems(lines []string, cfg *tui.Config, header string, inputCol, tagsCol int) []core.Item {
 	tiered := cfg.Tiered
 	if header != "" {
 		h := header
@@ -241,6 +254,7 @@ func stdinItems(lines []string, cfg *tui.Config, header string, inputCol int) []
 	}
 	for i := start; i < len(items); i++ {
 		items[i].IsDir = isDir(items[i].Fields[0])
+		setTags(&items[i], tagsCol)
 		if !items[i].HasChildren {
 			markInput(&items[i], inputCol)
 		}

@@ -229,7 +229,7 @@ New code MUST NOT introduce any Ctrl, Alt, or Meta binding.
 
 The `tui` package is a library; consumers (`fzt-automate`, `fzt-picker`, `fzt-browser`) import `github.com/romaine-life/fzt-terminal/tui` and handle their own builds.
 
-`cmd/fzt` is the `fzt` binary: an fzf-style picker. Pipe lines in (or pass `--yaml`), get the selection on stdout; exit 130 on cancel, 1 on empty input. `--filter "query"` prints ranked matches without a UI (this replaces the engine repo's old scoring-only CLI). Piped lists render with the same tree renderer as fzt-automate (search box panel, icon column), so every fzt picker looks alike. `--height` is accepted and ignored for fzf compatibility. The `:` palette is off (`HidePalette`) — a plain picker has no commands. `--tiered` makes piped rows a tree: the first column is depth, a row holds the deeper rows after it, Enter opens it in place and Esc or Backspace backs up (`linkTree`; parent indices count from the first row after the header lines, which the state sets apart). `--input-col N` makes a row whose field N is set ask for text on Enter, that field as the hint, and print the selection, a tab and the text. Both serve the tmux command palette (the tmux fork's `display-palette`). Shell scripts across shell-config (`pop`, `ws-load`, `vcs`, the profile-5 Tab handler) call it by name.
+`cmd/fzt` is the `fzt` binary: an fzf-style picker. Pipe lines in (or pass `--yaml`), get the selection on stdout; exit 130 on cancel, 1 on empty input. `--filter "query"` prints ranked matches without a UI (this replaces the engine repo's old scoring-only CLI). Piped lists render with the same tree renderer as fzt-automate (search box panel, icon column), so every fzt picker looks alike. `--height` is accepted and ignored for fzf compatibility. The `:` palette is off (`HidePalette`) — a plain picker has no commands. `--tiered` makes piped rows a tree: the first column is depth, a row holds the deeper rows after it, Enter opens it in place and Esc or Backspace backs up (`linkTree`; parent indices count from the first row after the header lines, which the state sets apart). `--input-col N` makes a row whose field N is set ask for text on Enter, that field as the hint, and print the selection, a tab and the text. `--tags-col N` reads a row's tags (separated by spaces or commas) from field N for tag search. All three serve the tmux command palette (the tmux fork's `display-palette`). Shell scripts across shell-config (`pop`, `ws-load`, `vcs`, the profile-5 Tab handler) call it by name.
 
 ```
 go build -o fzt.exe ./cmd/fzt
@@ -259,6 +259,10 @@ Menu CRUD used to live in `packages/routes/` here (`@nelsong6/fzt-terminal-route
 - **Internalized shell commands**: load-*, unload, sync handled internally in HandleCommandAction -- no PowerShell function dependencies. load auto-syncs and exits; unload clears cache and exits.
 
 ## Change log
+
+### 2026-11-01
+
+1. **Tag search** -- With the engine's tag search running (fzt v0.2.88), the description column shows each row's tags, the ones the query resolved to in green, the header's second column reads `tags`, the prompt's ghost completes the last term's tag, and terms that matched no tag follow the query as `no tag: …` in red. Every terminal menu (`newLoopState`) starts with the user's saved setting from the `:` palette's `tags` toggle (fzt-frontend `LoadTagMode`), so the `fzt` CLI, which has no palette, follows the toggle set in fzt-automate; `Simulate`, `NewTreeSession` and `--filter` ignore it so they rank the same everywhere. OpenProject FZT-67.
 
 ### 2026-10-29
 
