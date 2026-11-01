@@ -119,12 +119,16 @@ func TestLoopKeepsGoingAfterPicksAndCancel(t *testing.T) {
 		t.Fatalf("first pick = %+v", p)
 	}
 	// Escape steps out of the search, then clears it; at the top, where a
-	// one-shot Run would end, the loop goes back to rest instead.
+	// one-shot Run would end, the loop hands the cancel to the frontend and
+	// carries on until the frontend closes it.
 	h.keys("light")
 	h.key(tcell.KeyEscape)
 	h.key(tcell.KeyEscape)
-	h.key(tcell.KeyEscape)
 	h.noPick()
+	h.key(tcell.KeyEscape)
+	if p := h.pick(); p.Kind != "cancel" {
+		t.Fatalf("Escape at the top = %+v, want a cancel", p)
+	}
 	h.keys("lightson")
 	h.key(tcell.KeyEnter)
 	if p := h.pick(); p.Kind != "select" || p.Item.Fields[0] != "lightson" {
@@ -197,5 +201,19 @@ func TestReloadKeepsThePanel(t *testing.T) {
 	h.key(tcell.KeyEnter)
 	if p := h.pick(); p.Item.Fields[0] != "lightsoff" {
 		t.Fatalf("pick after reload = %+v", p)
+	}
+}
+
+func TestLoopCloseEndsTheMenu(t *testing.T) {
+	h := startLoop(t, loopYAML, loopCfg())
+	h.key(tcell.KeyEscape)
+	if p := h.pick(); p.Kind != "cancel" {
+		t.Fatalf("Escape at the top = %+v, want a cancel", p)
+	}
+	h.live.Close()
+	select {
+	case <-h.done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the menu kept running after Close")
 	}
 }
