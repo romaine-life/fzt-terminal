@@ -193,8 +193,9 @@ func drawUnified(c render.Canvas, s *core.State, cfg Config, w, startY, h int) {
 			drawText(c, contentX, y, string(ctx.Query), queryStyle, contentW)
 			c.ShowCursor(contentX+ctx.Cursor, y)
 
-			// Ghost autocomplete text: show remaining chars of top match if query is a prefix
-			if ctx.Cursor == len(ctx.Query) && len(ctx.Filtered) > 0 && len(ctx.Filtered[0].Fields) > 0 {
+			if core.TagSearchActive(ctx) {
+				drawTagPrompt(c, ctx, contentX, y, contentW, promptBg)
+			} else if ctx.Cursor == len(ctx.Query) && len(ctx.Filtered) > 0 && len(ctx.Filtered[0].Fields) > 0 {
 				name := ctx.Filtered[0].Fields[0]
 				nameRunes := []rune(name)
 				if len(nameRunes) > len(ctx.Query) && strings.EqualFold(string(nameRunes[:len(ctx.Query)]), string(ctx.Query)) {
@@ -235,6 +236,9 @@ func drawUnified(c render.Canvas, s *core.State, cfg Config, w, startY, h int) {
 			colW := effectiveNameCol
 			if fi > 0 {
 				colW = 0
+			}
+			if fi == 1 && core.TagSearchActive(ctx) {
+				hdr = "tags" // the column shows tags during a tag search
 			}
 			drawText(c, x, y, hdr, hdrStyle, w-x-borderOffset)
 			x += colW
@@ -396,8 +400,12 @@ func drawTreeRow(c render.Canvas, row core.TreeRow, isSelected, isTopMatch bool,
 	}
 	x += nameWidth
 
-	// Description
-	if len(row.Item.Fields) > 1 {
+	// Description, or the row's tags during a tag search
+	if core.TagSearchActive(ctx) {
+		if remaining := w - x - borderOffset; remaining > 0 {
+			drawTags(c, x, y, row.Item, ctx.TagTerms, hasBg, remaining)
+		}
+	} else if len(row.Item.Fields) > 1 {
 		desc := row.Item.Fields[1]
 		descStyle := tcell.StyleDefault
 		if hasBg {
@@ -517,3 +525,53 @@ func drawPanel(c render.Canvas, p core.Panel, borderOffset, y, w int) {
 
 // panelHintFg is the empty panel's placeholder: dimmer than its border and label.
 var panelHintFg = tcell.NewRGBColor(0x55, 0x55, 0x55)
+
+// drawTagPrompt follows a tag-search query with the rest of the tag its last
+// term resolved to (the ghost Tab accepts) and, past that, the terms that
+// matched no tag.
+func drawTagPrompt(c render.Canvas, ctx *core.TreeContext, x, y, w int, bg tcell.Color) {
+	used := len(ctx.Query)
+	if ctx.Cursor == len(ctx.Query) {
+		if ghost := core.TagGhost(ctx); ghost != "" {
+			drawText(c, x+used, y, ghost, tcell.StyleDefault.Foreground(GhostFg).Background(bg), w-used)
+			used += len([]rune(ghost))
+		}
+	}
+	var missing []string
+	for _, t := range ctx.TagTerms {
+		if t.Tag == "" {
+			missing = append(missing, t.Term)
+		}
+	}
+	if len(missing) > 0 && w-used > 2 {
+		note := "  no tag: " + strings.Join(missing, ", ")
+		drawText(c, x+used, y, note, tcell.StyleDefault.Foreground(TitleErrorFg).Background(bg), w-used)
+	}
+}
+
+// drawTags draws an item's tags in the description column, the ones the
+// search resolved to highlighted.
+func drawTags(c render.Canvas, x, y int, item core.Item, terms []core.TagTerm, hasBg bool, maxW int) {
+	matched := map[string]bool{}
+	for _, t := range terms {
+		matched[t.Tag] = true
+	}
+	end := x + maxW
+	for i, tag := range item.Tags {
+		style := tcell.StyleDefault.Foreground(GhostFg)
+		if matched[tag] {
+			style = tcell.StyleDefault.Foreground(HighlightFg).Bold(true)
+		}
+		if hasBg {
+			style = style.Background(SelectionBg)
+		}
+		if i > 0 {
+			x++
+		}
+		if x >= end {
+			return
+		}
+		drawText(c, x, y, tag, style, end-x)
+		x += len([]rune(tag))
+	}
+}

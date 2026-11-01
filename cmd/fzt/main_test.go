@@ -44,7 +44,7 @@ func TestTieredRowsOpenAsSubMenus(t *testing.T) {
 	// The tmux palette's shape: a header, then a folder whose first child follows it.
 	lines := []string{"0\tmove-tab\tMove the tab", "1\twork\tsession\tid-work", "1\tplay\tsession\tid-play", "0\tkill-pane\tDestroy the pane\tid-kill"}
 	cfg := tui.Config{Layout: "reverse", HidePalette: true, Tiered: true, DepthPenalty: 5, Delimiter: "\t", AcceptNth: []int{3}}
-	items := stdinItems(lines, &cfg, "name\tdescription", 0)
+	items := stdinItems(lines, &cfg, "name\tdescription", 0, 0)
 	data := items[cfg.HeaderLines:]
 	if !data[0].HasChildren || data[1].ParentIdx != 0 || data[2].ParentIdx != 0 || data[3].ParentIdx != -1 {
 		t.Fatalf("tree not linked: %+v", data)
@@ -91,5 +91,33 @@ func TestTieredRowsOpenAsSubMenus(t *testing.T) {
 	press(tcell.KeyEnter)
 	if pick := press('p', 'l', 'a', 'y', tcell.KeyEnter); pick != "id-play" {
 		t.Fatalf("pick in the sub-menu = %q, want id-play", pick)
+	}
+}
+
+func TestTagSearchShowsTagsInDescriptionColumn(t *testing.T) {
+	// tmux palette rows: depth, name, description, hint, id, tags.
+	lines := []string{
+		"0\tmove-window\tMove a window\t\tid-1\tmove window",
+		"0\tswitch-client\tSwitch the session\t\tid-2\tsession,client,switch",
+		"0\tkill-session\tDestroy a session\t\tid-3\tsession kill",
+	}
+	cfg := tui.Config{Layout: "reverse", HidePalette: true, Tiered: true, DepthPenalty: 5, Delimiter: "\t", TagMode: true}
+	items := stdinItems(lines, &cfg, "name\tdescription", 0, 5)
+	if got := items[cfg.HeaderLines+1].Tags; strings.Join(got, "|") != "session|client|switch" {
+		t.Fatalf("tags = %q", got)
+	}
+	frames := tui.Simulate(items, cfg, "sess", 100, 10, false)
+	last := frames[len(frames)-1].Content
+	for _, want := range []string{"switch-client", "kill-session", "session client switch", "ion", "tags"} {
+		if !strings.Contains(last, want) {
+			t.Fatalf("frame lacks %q:\n%s", want, last)
+		}
+	}
+	if strings.Contains(last, "move-window") || strings.Contains(last, "Switch the session") {
+		t.Fatalf("frame shows a non-match or a description:\n%s", last)
+	}
+	frames = tui.Simulate(items, cfg, "sess zzz", 100, 10, false)
+	if last := frames[len(frames)-1].Content; !strings.Contains(last, "no tag: zzz") {
+		t.Fatalf("unresolved term not reported:\n%s", last)
 	}
 }

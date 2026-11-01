@@ -482,6 +482,18 @@ func Run(items []core.Item, cfg Config) (Pick, error) {
 	}
 }
 
+// applySavedTagMode turns tag search on when the user left it on (the `:`
+// palette's tags toggle). Only the terminal menus read it: tests, Simulate and
+// --filter rank the same on every machine.
+func applySavedTagMode(s *core.State) {
+	on, err := frontend.LoadTagMode()
+	if err != nil {
+		s.SetTitle("tag search setting not read: "+err.Error(), 2)
+		return
+	}
+	s.TagMode = s.TagMode || on
+}
+
 // applyFrontendConfig sets frontend identity and provider from Config onto State.
 func applyFrontendConfig(s *core.State, cfg Config) {
 	if cfg.FrontendName != "" {
@@ -593,6 +605,7 @@ func (l *Live) OnAbort(f func()) { l.post(liveEvent{abort: &f}) }
 func newLoopState(items []core.Item, cfg Config) (*core.State, []int) {
 	s, searchCols := core.NewState(items, cfg)
 	applyFrontendConfig(s, cfg)
+	applySavedTagMode(s)
 	frontend.InjectCommandFolder(s, frontend.EngineVersion)
 	ctx := s.TopCtx()
 	ctx.TreeExpanded = make(map[int]bool)
