@@ -134,16 +134,19 @@ func TestLoopKeepsGoingAfterPicksAndCancel(t *testing.T) {
 
 func TestLoopPanelShowsLiveResults(t *testing.T) {
 	h := startLoop(t, loopYAML, loopCfg())
-	// No border: the panel is rows 0-2, the prompt bar starts at row 3.
+	// No border: the panel box is rows 0-4 (its lines are 1-3), the prompt
+	// bar starts at row 5.
 	h.live.Update(func(s *core.State) { s.SetPanel("Living room lights on\nsecond\nthird\nfourth", core.PanelOK) })
-	h.waitRow(0, "Living room lights on")
-	h.waitRow(2, "third …")
-	h.waitRow(3, "┌")
+	h.waitRow(0, "┌")
+	h.waitRow(1, "│ Living room lights on")
+	h.waitRow(3, "third …")
+	h.waitRow(4, "└")
+	h.waitRow(5, "┌")
 	h.live.Update(func(s *core.State) { s.SetPanel("done", core.PanelFailed) })
-	h.waitRow(0, "done")
+	h.waitRow(1, "done")
 	cells, w, _ := h.screen.GetContents()
-	if r := cells[2*w+1].Runes; len(r) > 0 && r[0] != ' ' {
-		t.Fatalf("a shorter result must clear the old rows, row 2 starts %q", string(r))
+	if r := cells[3*w+2].Runes; len(r) > 0 && r[0] != ' ' {
+		t.Fatalf("a shorter result must clear the old lines, row 3 starts %q", string(r))
 	}
 }
 
@@ -175,7 +178,7 @@ func TestDeclaredInputIsAskedBeforeThePick(t *testing.T) {
 	h.keys("ollamastop")
 	h.key(tcell.KeyEnter)
 	h.noPick()
-	h.waitRow(core.PanelLines+1, "model to stop")
+	h.waitRow(core.PanelRows+1, "model to stop")
 	h.keys("llama3.1")
 	h.key(tcell.KeyEnter)
 	p := h.pick()
@@ -189,7 +192,7 @@ func TestReloadKeepsThePanel(t *testing.T) {
 	h.live.Update(func(s *core.State) { s.SetPanel("synced", core.PanelOK) })
 	items, _ := core.LoadYAMLFromString("- name: lightsoff\n  action: lightsoff\n")
 	h.live.Reload(items)
-	h.waitRow(0, "synced")
+	h.waitRow(1, "synced")
 	h.keys("lightsoff")
 	h.key(tcell.KeyEnter)
 	if p := h.pick(); p.Item.Fields[0] != "lightsoff" {
