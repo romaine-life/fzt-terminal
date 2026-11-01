@@ -608,6 +608,17 @@ func clearSearch(s *core.State) {
 	ctx.QueryExpanded = make(map[int]bool)
 }
 
+// enterStartFolder opens the menu inside cfg.StartFolder, once the tree is
+// complete (the palette injected), or says in the title that it isn't there.
+func enterStartFolder(s *core.State, cfg Config, searchCols []int) {
+	if len(cfg.StartFolder) == 0 {
+		return
+	}
+	if !core.EnterFolder(s, cfg.StartFolder, cfg, searchCols) {
+		s.SetTitle("no folder "+strings.Join(cfg.StartFolder, "/")+" in this menu", 2)
+	}
+}
+
 // sessionLoop draws the menu and handles input until onPick returns true.
 // live is nil for a one-shot Run.
 func sessionLoop(screen tcell.Screen, items []core.Item, cfg Config, live *Live, onPick func(Pick) bool) {
@@ -617,6 +628,7 @@ func sessionLoop(screen tcell.Screen, items []core.Item, cfg Config, live *Live,
 	if cfg.FocusedDir != "" && s.Provider != nil {
 		core.ExpandToPath(s, cfg.FocusedDir, cfg, searchCols)
 	}
+	enterStartFolder(s, cfg, searchCols)
 
 	canvas := &tcellCanvas{screen: screen}
 	var inputItem core.Item // the input leaf whose text the prompt is taking
@@ -844,6 +856,7 @@ func Simulate(items []core.Item, cfg Config, query string, w, h int, styled bool
 	if cfg.FocusedDir != "" && s.Provider != nil {
 		core.ExpandToPath(s, cfg.FocusedDir, cfg, searchCols)
 	}
+	enterStartFolder(s, cfg, searchCols)
 
 	var frames []Frame
 
