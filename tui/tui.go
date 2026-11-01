@@ -532,8 +532,9 @@ func runWithSession(screen tcell.Screen, items []core.Item, cfg Config) (Pick, e
 // on the menu's goroutine and must return quickly; work that takes time runs
 // elsewhere and reaches the menu through live. setup, if set, runs once
 // before the first frame, for state the frontend restores. Escape at the top
-// clears the search instead of ending. RunLoop returns only on a self-update,
-// which exits the process.
+// clears the search, and the cancel then goes to onPick; the frontend ends the
+// menu with live.Close. RunLoop returns after Close, or never on a
+// self-update, which exits the process.
 func RunLoop(items []core.Item, cfg Config, setup func(*Live), onPick func(Pick, *Live)) error {
 	screen, err := tcell.NewScreen()
 	if err != nil {
@@ -570,6 +571,7 @@ type liveEvent struct {
 	update func(*core.State)
 	reload []core.Item
 	abort  *func()
+	close  bool
 }
 
 func (l *Live) post(e liveEvent) { l.screen.PostEvent(tcell.NewEventInterrupt(e)) }
@@ -579,6 +581,9 @@ func (l *Live) Update(f func(*core.State)) { l.post(liveEvent{update: f}) }
 
 // Reload replaces the menu's items, as a fresh start would, keeping the panel.
 func (l *Live) Reload(items []core.Item) { l.post(liveEvent{reload: items}) }
+
+// Close ends the menu: RunLoop returns once queued calls before it are applied.
+func (l *Live) Close() { l.post(liveEvent{close: true}) }
 
 // OnAbort sets what Escape does while the menu is frozen (nil: nothing). It is
 // how a frontend lets the user give up waiting on a command.
@@ -658,17 +663,14 @@ func sessionLoop(screen tcell.Screen, items []core.Item, cfg Config, live *Live,
 	}()
 
 	// end hands a pick to the frontend; true ends the loop. A loop frontend
-	// keeps going after a cancel, with the search cleared.
-	// Each pick also leaves the menu at rest, ready for the next.
+	// is handed the cancel too, with the search cleared, and ends the menu
+	// itself (Live.Close). Each pick also leaves the menu at rest.
 	end := func(p Pick) bool {
 		if live == nil {
 			return onPick(p)
 		}
 		if p.Kind != "command" {
 			clearSearch(s)
-		}
-		if p.Kind == "cancel" {
-			return false
 		}
 		return onPick(p)
 	}
@@ -736,6 +738,8 @@ func sessionLoop(screen tcell.Screen, items []core.Item, cfg Config, live *Live,
 					inputItem = core.Item{}
 				case e.abort != nil:
 					live.abort = *e.abort
+				case e.close:
+					return
 				}
 			}
 		case *tcell.EventMouse:
