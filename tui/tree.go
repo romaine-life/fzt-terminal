@@ -59,7 +59,7 @@ func drawUnified(c render.Canvas, s *core.State, cfg Config, w, startY, h int) {
 
 	if cfg.ShowPanel {
 		drawPanel(c, s.Panel, borderOffset, y, w)
-		y += core.PanelLines
+		y += core.PanelRows
 	}
 
 	hasQuery := len(ctx.Query) > 0
@@ -456,8 +456,9 @@ func scopedPath(ctx *core.TreeContext, maxW int) string {
 	return string(runes)
 }
 
-// drawPanel draws the latest command result in the core.PanelLines rows at y,
-// colored by how it ended. Empty rows stay blank so the layout never moves.
+// drawPanel draws the latest command result as a box of core.PanelRows rows
+// at y: a border colored by how the command ended, around core.PanelLines
+// lines. Empty lines stay blank so the layout never moves.
 func drawPanel(c render.Canvas, p core.Panel, borderOffset, y, w int) {
 	fg := TitleNeutralFg
 	switch p.Style {
@@ -467,8 +468,32 @@ func drawPanel(c render.Canvas, p core.Panel, borderOffset, y, w int) {
 		fg = TitleErrorFg
 	}
 	style := tcell.StyleDefault.Foreground(fg)
-	x := borderOffset + 1
-	width := w - borderOffset*2 - 2
+	edge := tcell.StyleDefault.Foreground(BorderFg)
+	if len(p.Lines) > 0 {
+		edge = style
+	}
+	left, right := borderOffset, w-borderOffset-1
+	bottom := y + core.PanelRows - 1
+	c.SetContent(left, y, '┌', nil, edge)
+	c.SetContent(right, y, '┐', nil, edge)
+	c.SetContent(left, bottom, '└', nil, edge)
+	c.SetContent(right, bottom, '┘', nil, edge)
+	for x := left + 1; x < right; x++ {
+		c.SetContent(x, y, '─', nil, edge)
+		c.SetContent(x, bottom, '─', nil, edge)
+	}
+	for row := y + 1; row < bottom; row++ {
+		c.SetContent(left, row, '│', nil, edge)
+		c.SetContent(right, row, '│', nil, edge)
+	}
+	drawText(c, left+2, y, " command output ", tcell.StyleDefault.Foreground(BorderFg), right-left-3)
+
+	x := left + 2 // a space of padding inside the left border
+	width := right - x - 1
+	if len(p.Lines) == 0 {
+		drawText(c, x, y+1, "nothing run yet", tcell.StyleDefault.Foreground(panelHintFg).Italic(true), width)
+		return
+	}
 	for i := 0; i < core.PanelLines; i++ {
 		if i >= len(p.Lines) {
 			continue
@@ -485,7 +510,10 @@ func drawPanel(c render.Canvas, p core.Panel, borderOffset, y, w int) {
 			if j >= width {
 				break
 			}
-			c.SetContent(x+j, y+i, r, nil, style)
+			c.SetContent(x+j, y+1+i, r, nil, style)
 		}
 	}
 }
+
+// panelHintFg is the empty panel's placeholder: dimmer than its border and label.
+var panelHintFg = tcell.NewRGBColor(0x55, 0x55, 0x55)
