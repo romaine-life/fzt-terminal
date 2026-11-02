@@ -153,7 +153,7 @@ func (s *Session) result(r render.SessionAction) *Result {
 			name = r.Item.Fields[0]
 		}
 		// the `:` palette's own commands run here, as in the full-screen picker
-		if r.Item.Injected {
+		if r.Item.Palette {
 			action := frontend.HandleCommandAction(s.sess.State(), r.Item)
 			if action == "" {
 				return nil

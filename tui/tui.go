@@ -252,7 +252,7 @@ func cleanupInspect(s *core.State) {
 }
 
 // ProcessAction intercepts "select:..." actions to handle command palette routing.
-// When the selected item is from the injected `:` palette (Item.Injected == true),
+// When the selected item is one of the `:` palette's commands (Item.Palette),
 // it looks up the actual tree item (not the AcceptNth-truncated string) and routes
 // through HandleCommandAction. HandleCommandAction returns "" for internally-handled
 // actions (version/whoami/updatetimer/validate/etc.) or an action string for the
@@ -278,12 +278,14 @@ func processAction(s *core.State, action string) string {
 		// may have been truncated by AcceptNth, losing metadata fields.
 		item := findSelectedItem(s)
 		// Route through the palette handler whenever the selected item is
-		// from the injected `:` palette, regardless of whether the user's
+		// one of the `:` palette's commands, regardless of whether the user's
 		// scope stack is inside `:`. Fuzzy-matching a palette item from
 		// root lands here too — otherwise the raw "select:<name>" leaks
 		// to the shell and trips things like PowerShell's `?` alias for
-		// Where-Object. Every palette item carries Injected=true.
-		if item.Injected {
+		// Where-Object. Every palette item carries Palette=true; a host's
+		// own injected rows (fzt-automate's tmux folder) don't, and are
+		// picked like any other row.
+		if item.Palette {
 			cmdAction := frontend.HandleCommandAction(s, item)
 			if cmdAction == "" {
 				// Handled internally — clear search state so top match
