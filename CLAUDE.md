@@ -264,7 +264,7 @@ Menu CRUD used to live in `packages/routes/` here (`@nelsong6/fzt-terminal-route
 
 1. **Tags in the item editor** -- `: edit > edit-item` shows a `tags` row for every item (space separated; type spaces or commas), so a menu's tags (the at menu's, fzt v0.2.91) can be changed from inside it and saved with the menu. `--tags-col` parses through the engine's `ParseTags`. OpenProject FZT-67.
 
-1. **Tag search** -- With the engine's tag search running (fzt v0.2.88), the description column shows each row's tags, the ones the query resolved to in green, the header's second column reads `tags`, the prompt's ghost completes the last term's tag, and terms that matched no tag follow the query as `no tag: …` in red. Every terminal menu (`newLoopState`) starts with the user's saved setting from the `:` palette's `tags` toggle (fzt-frontend `LoadTagMode`), so the `fzt` CLI, which has no palette, follows the toggle set in fzt-automate; `Simulate`, `NewTreeSession` and `--filter` ignore it so they rank the same everywhere. OpenProject FZT-67.
+1. **Tag search** -- With the engine's tag search running (fzt v0.2.88), the description column shows each row's tags, the ones the query resolved to in green, the header's second column reads `tags`, the prompt's ghost completes the last term's tag, and terms that matched no tag follow the query as `no tag: …` in red. Every menu opens with tag search off; the `:` palette's `tags` toggle turns it on until the menu closes (Nelson chose reset over saving it, 2026-11-01). OpenProject FZT-67.
 
 ### 2026-10-29
 
