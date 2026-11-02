@@ -102,4 +102,5 @@ var (
 	TitleErrorFg   = tcell.ColorRed
 	TitleNeutralFg = tcell.ColorLightGray  // "registered but no action" — distinct from success
 	SyncIconFg     = tcell.ColorYellow
+	SyncFailedFg   = tcell.ColorRed // the background check couldn't sign in or reach the menu
 )
