@@ -54,7 +54,7 @@ func initSyncCheck(s *core.State, cfg Config, postEvent func()) {
 			stale, err := checkMenuStale(cfg.ConfigDir)
 			if err != nil {
 				s.SyncIcon = syncFailedIcon
-				s.SetTitle(err.Error()+cacheAge(cfg.ConfigDir, time.Now()), 2)
+				s.SetTitle(cacheAge(cfg.ConfigDir, time.Now())+" · "+err.Error(), 2)
 				postEvent()
 				return
 			}
@@ -69,14 +69,14 @@ func initSyncCheck(s *core.State, cfg Config, postEvent func()) {
 	}
 }
 
-// cacheAge says how old the menu on screen is, for a failed check's title:
-// " · menu last synced 7h ago".
+// cacheAge says how old the menu on screen is. It leads a failed check's title, so
+// a narrow title bar cuts the reason's tail, never the age: "menu 7h old".
 func cacheAge(configDir string, now time.Time) string {
 	info, err := os.Stat(filepath.Join(configDir, "menu-cache.yaml"))
 	if err != nil {
-		return " · no menu synced yet"
+		return "no menu synced yet"
 	}
-	return " · menu last synced " + ago(now.Sub(info.ModTime())) + " ago"
+	return "menu " + ago(now.Sub(info.ModTime())) + " old"
 }
 
 func ago(d time.Duration) string {

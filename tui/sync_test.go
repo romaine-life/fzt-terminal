@@ -37,7 +37,7 @@ func TestSyncCheckFailureIsShown(t *testing.T) {
 	if s.TitleStyle != 2 || s.TitleOverride == "" {
 		t.Errorf("title = %q (style %d), want the reason as an error", s.TitleOverride, s.TitleStyle)
 	}
-	if want := "· no menu synced yet"; !strings.HasSuffix(s.TitleOverride, want) {
+	if want := "no menu synced yet · signed out: "; !strings.HasPrefix(s.TitleOverride, want) {
 		t.Errorf("title %q doesn't say how old the menu is", s.TitleOverride)
 	}
 	if _, err := os.Stat(lastCheck); err == nil {
@@ -68,9 +68,9 @@ func TestCacheAge(t *testing.T) {
 	os.WriteFile(cache, nil, 0o644)
 	now := time.Now()
 	for age, want := range map[time.Duration]string{
-		12 * time.Minute: " · menu last synced 12m ago",
-		7 * time.Hour:    " · menu last synced 7h ago",
-		75 * time.Hour:   " · menu last synced 3 days ago",
+		12 * time.Minute: "menu 12m old",
+		7 * time.Hour:    "menu 7h old",
+		75 * time.Hour:   "menu 3 days old",
 	} {
 		os.Chtimes(cache, now.Add(-age), now.Add(-age))
 		if got := cacheAge(dir, now); got != want {
