@@ -1432,6 +1432,9 @@ func drawBorderTopWithTitle(c render.Canvas, w, y int, title, pos string, titleS
 		iStart := w - len(iRunes) - 3
 		if iStart > 2 {
 			iStyle := tcell.StyleDefault.Foreground(SyncIconFg)
+			if syncIcon == syncFailedIcon {
+				iStyle = tcell.StyleDefault.Foreground(SyncFailedFg)
+			}
 			c.SetContent(iStart, y, ' ', nil, borderStyle)
 			for i, r := range iRunes {
 				c.SetContent(iStart+1+i, y, r, nil, iStyle)
