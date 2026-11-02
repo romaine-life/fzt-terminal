@@ -102,3 +102,34 @@ func TestPickIsTheItemNotItsName(t *testing.T) {
 		t.Fatalf("pick = %+v, want the second Steam (focus steam)", pick)
 	}
 }
+
+// A host's own injected rows (fzt-automate's tmux folder: never saved, not the
+// `:` palette's) are picked like any menu row: Enter on one that declares an
+// input asks for its text, and Enter on one that doesn't selects it.
+func TestInjectedHostRowsArePicked(t *testing.T) {
+	newState := func() (*core.State, Config, []int) {
+		items := []core.Item{
+			{Fields: []string{"rename-window", "Rename the window."}, ParentIdx: -1, PropertyOf: -1, Input: "new-name", Action: &core.ItemAction{Type: "tmux", Target: "7"}, Injected: true},
+			{Fields: []string{"new-window", "Create a new window."}, ParentIdx: -1, PropertyOf: -1, Action: &core.ItemAction{Type: "tmux", Target: "8"}, Injected: true},
+		}
+		cfg := Config{Layout: "reverse", HidePalette: true, TreeMode: true, Tiered: true, DepthPenalty: 5, AcceptNth: []int{1}}
+		s, searchCols := core.NewState(items, cfg)
+		ctx := s.TopCtx()
+		ctx.TreeExpanded = make(map[int]bool)
+		ctx.QueryExpanded = make(map[int]bool)
+		ctx.TreeCursor = -1
+		return s, cfg, searchCols
+	}
+
+	s, cfg, searchCols := newState()
+	pick := pressKeys(t, s, cfg, searchCols, 'r', 'e', 'n', tcell.KeyEnter, 'm', 'a', 'i', 'l', tcell.KeyEnter)
+	if pick.Kind != "input" || pick.Text != "mail" || pick.Item.Action == nil || pick.Item.Action.Target != "7" {
+		t.Fatalf("pick = %+v, want rename-window's row with text mail", pick)
+	}
+
+	s, cfg, searchCols = newState()
+	pick = pressKeys(t, s, cfg, searchCols, 'n', 'e', 'w', tcell.KeyEnter)
+	if pick.Kind != "select" || pick.Item.Action == nil || pick.Item.Action.Target != "8" {
+		t.Fatalf("pick = %+v, want new-window's row selected", pick)
+	}
+}
