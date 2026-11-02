@@ -19,7 +19,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"unicode"
 
 	"github.com/romaine-life/fzt-terminal/tui"
 	"github.com/romaine-life/fzt/core"
@@ -194,9 +193,7 @@ func setTags(item *core.Item, col int) {
 	if col < 1 || len(item.Fields) < col {
 		return
 	}
-	item.Tags = strings.FieldsFunc(item.Fields[col-1], func(r rune) bool {
-		return r == ',' || unicode.IsSpace(r)
-	})
+	item.Tags = core.ParseTags(item.Fields[col-1])
 }
 
 // linkTree makes depth-prefixed rows a tree, as LoadYAML does for a YAML menu:
