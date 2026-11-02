@@ -15,7 +15,7 @@ fzt (engine)                    fzt-terminal (this repo)
 fzt-frontend (interaction layer)
   frontend.InjectCommandFolder    consumed by tui/ for palette injection
   frontend.HandleCommandAction    consumed by tui/ for action routing
-  frontend.CheckBookmarkStaleness  consumed by tui/sync.go for background staleness check
+  frontend.CheckMenuStale          consumed by tui/sync.go for the background check (failures shown, not swallowed)
 
 Consumers of this repo's tui package:
   fzt            (cmd/fzt)    -> tui.Run over stdin / --yaml: the fzf-style picker CLI
