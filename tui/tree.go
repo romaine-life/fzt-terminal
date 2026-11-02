@@ -90,7 +90,7 @@ func drawUnified(c render.Canvas, s *core.State, cfg Config, w, startY, h int) {
 	promptBg := PromptSurfaceBg
 	borderStyle := tcell.StyleDefault.Foreground(BorderFg)
 
-	// Mode indicator: search (magnifying glass) vs nav (arrow) vs inspect (gear)
+	// Mode indicator: search (magnifying glass, a tag in tag search) vs nav (arrow) vs inspect (gear)
 	var promptIcon rune
 	var promptIconStyle tcell.Style
 	if s.PromptMode != "" {
@@ -107,6 +107,9 @@ func drawUnified(c render.Canvas, s *core.State, cfg Config, w, startY, h int) {
 		promptIconStyle = tcell.StyleDefault.Foreground(NavModeFg).Background(promptBg)
 	} else {
 		promptIcon = '\uF002' //
+		if s.TagMode {
+			promptIcon = '\uF02B' //  tag search
+		}
 		promptIconStyle = tcell.StyleDefault.Foreground(SearchModeFg).Bold(true).Background(promptBg)
 	}
 	promptLen := 2 // icon + space
@@ -204,16 +207,17 @@ func drawUnified(c render.Canvas, s *core.State, cfg Config, w, startY, h int) {
 					drawText(c, contentX+len(ctx.Query), y, ghost, ghostStyle, contentW-len(ctx.Query))
 				}
 			}
-		} else {
-			hint := core.SearchHint(s, cfg)
+		} else if ctx.SearchActive || len(ctx.Scope) > 1 {
+			hint := "search\u2026"
 			if cfg.ScopedView && cfg.FoldersOnly && len(ctx.Scope) > 1 && ctx.TreeCursor < 0 {
 				hint = "Enter picks this folder, Right opens one, or type to search\u2026"
-				if core.TagSearchReady(s, cfg) {
-					hint = "Enter picks this folder, Right opens one, or search by tag\u2026"
-				}
 			}
 			hintStyle := tcell.StyleDefault.Foreground(HintFg).Italic(true).Background(promptBg)
 			drawText(c, qx, y, hint, hintStyle, pw-promptLen-scopeLen)
+			c.ShowCursor(qx, y)
+		} else {
+			hintStyle := tcell.StyleDefault.Foreground(HintFg).Italic(true).Background(promptBg)
+			drawText(c, qx, y, "type to search\u2026", hintStyle, pw-promptLen-scopeLen)
 			c.ShowCursor(qx, y)
 		}
 		y++
