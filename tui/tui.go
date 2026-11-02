@@ -184,6 +184,7 @@ func handleShiftEnter(s *core.State) string {
 				props = append(props, struct{ key, val string }{"input", item.Input})
 			}
 		}
+		props = append(props, struct{ key, val string }{"tags", core.FormatTags(item.Tags)})
 
 		s.InspectItemIdxs = nil
 		for _, p := range props {

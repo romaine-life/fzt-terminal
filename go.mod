@@ -4,8 +4,8 @@ go 1.26.1
 
 require (
 	github.com/gdamore/tcell/v2 v2.13.10
-	github.com/romaine-life/fzt v0.2.88
-	github.com/romaine-life/fzt-frontend v0.1.37
+	github.com/romaine-life/fzt v0.2.91
+	github.com/romaine-life/fzt-frontend v0.1.38
 	golang.org/x/term v0.37.0
 )
 
