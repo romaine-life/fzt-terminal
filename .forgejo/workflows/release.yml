@@ -1,12 +1,14 @@
 name: Release
 
 # Claude-driven CI, run by hand: dispatch it through the Forgejo API (see
-# CLAUDE.md, CI). Downstream consumers are updated manually per repo.
+# CLAUDE.md, CI). A dependency change on main also releases after its PR
+# merges. Downstream consumers are updated manually per repo.
 
 on:
   workflow_dispatch:
   push:
     branches: [main]
+    paths: [go.mod, go.sum]
 
 concurrency:
   group: release-tag
@@ -14,7 +16,8 @@ concurrency:
 
 jobs:
   release:
-    if: "github.event_name == 'workflow_dispatch' || startsWith(github.event.head_commit.message, 'deps: update')"
+    # Filter events above: Forgejo evaluates a caller job's `if` inside the
+    # expanded workflow_call, where event_name is no longer workflow_dispatch.
     uses: romaine-life/pipeline-templates/.forgejo/workflows/release-and-dispatch-template.yml@main
     secrets: inherit
     with:
