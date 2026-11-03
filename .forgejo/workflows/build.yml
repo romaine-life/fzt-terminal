@@ -24,6 +24,8 @@ jobs:
   # home shell), which a step must not load.
   windows:
     runs-on: windows-latest
+    outputs:
+      release-tag: ${{ steps.upload.outputs.tag || 'validation-only' }}
     defaults:
       run:
         shell: pwsh -NoLogo -NoProfile -NonInteractive -Command "$ErrorActionPreference = 'Stop'; . ([scriptblock]::Create([IO.File]::ReadAllText('{0}'))); if (Test-Path variable:LASTEXITCODE) { exit $LASTEXITCODE }"
@@ -82,6 +84,7 @@ jobs:
           } finally { Remove-Item cert.pfx }
 
       - name: Upload signed Windows assets
+        id: upload
         if: github.event_name == 'workflow_dispatch'
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -105,6 +108,7 @@ jobs:
               throw "Release $env:TAG is missing the expected $file"
             }
           }
+          "tag=$env:TAG" | Add-Content $env:GITHUB_OUTPUT
 
   unix:
     # Pure-Go cross-compiles use the fast Windows pool. Only the shared
@@ -159,3 +163,10 @@ jobs:
               throw "Release $env:TAG is missing the expected $file"
             }
           }
+
+  home-sync:
+    needs: [windows, unix]
+    uses: romaine-life/pipeline-templates/.forgejo/workflows/home-sync.yml@main
+    secrets: inherit
+    with:
+      release-tag: ${{ needs.windows.outputs.release-tag != 'validation-only' && needs.windows.outputs.release-tag || '' }}

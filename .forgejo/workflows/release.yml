@@ -22,3 +22,4 @@ jobs:
     secrets: inherit
     with:
       artifact-build-workflow: build.yml
+      draft-release: true
