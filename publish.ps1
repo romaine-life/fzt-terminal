@@ -1,18 +1,25 @@
-# Publish the latest GitHub release's Windows `fzt` to \\NelsonNAS\tools as `fzt`
+# Publish the latest Forgejo release's Windows `fzt` to \\NelsonNAS\tools as `fzt`
 # (Nelson's home machines run it from there; see shell-config-profile-home
 # claude\topics\home-tools.md). Cut a release first (release.yml).
 $ErrorActionPreference = 'Stop'
 
 $repo = 'romaine-life/fzt-terminal'
-$tag = gh release view -R $repo --json tagName --jq .tagName
-if ($LASTEXITCODE -ne 0) { throw "no release on $repo" }
-$commit = gh api "repos/$repo/commits/$tag" --jq .sha
+$api = "https://forgejo.romaine.life/api/v1/repos/$repo"
+$cred = "protocol=https`nhost=forgejo.romaine.life`n`n" | git credential fill
+$token = ($cred | Where-Object { $_ -like 'password=*' }) -replace '^password=', ''
+if (-not $token) { throw 'no forgejo.romaine.life token in the git credential helper' }
+$h = @{ Authorization = "token $token" }
+
+$release = Invoke-RestMethod "$api/releases/latest" -Headers $h
+$tag = $release.tag_name
+$commit = (Invoke-RestMethod "$api/tags/$tag" -Headers $h).commit.sha
+$asset = $release.assets | Where-Object name -eq 'fzt-windows-amd64.exe'
+if (-not $asset) { throw "release $tag has no fzt-windows-amd64.exe" }
 
 $dir = Join-Path ([IO.Path]::GetTempPath()) "fzt-$tag"
 Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
-gh release download $tag -R $repo -p fzt-windows-amd64.exe -D $dir
-if ($LASTEXITCODE -ne 0) { throw "downloading fzt-windows-amd64.exe from $tag failed" }
-Rename-Item (Join-Path $dir 'fzt-windows-amd64.exe') 'fzt.exe'
+New-Item -ItemType Directory $dir | Out-Null
+Invoke-WebRequest $asset.browser_download_url -Headers $h -OutFile (Join-Path $dir 'fzt.exe')
 
 publish-tool -Name fzt -Version $tag -Path (Join-Path $dir 'fzt.exe') `
-    -Entry fzt.exe -Repo "https://github.com/$repo" -Commit $commit
+    -Entry fzt.exe -Repo "https://forgejo.romaine.life/$repo" -Commit $commit

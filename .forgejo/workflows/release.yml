@@ -1,0 +1,18 @@
+name: Release
+
+# Claude-driven CI, run by hand: dispatch it through the Forgejo API (see
+# CLAUDE.md, CI). Downstream consumers are updated manually per repo.
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: release-tag
+  cancel-in-progress: false
+
+jobs:
+  release:
+    uses: romaine-life/pipeline-templates/.forgejo/workflows/release-and-dispatch-template.yml@main
+    secrets: inherit
+    with:
+      artifact-build-workflow: build.yml

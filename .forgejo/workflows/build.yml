@@ -1,0 +1,151 @@
+name: Build
+
+# Called by the release templates AFTER a release is cut. Builds the `fzt`
+# picker CLI (cmd/fzt) for three OSes, and the fzt library (cmd/fztlib) as a
+# Windows DLL for apps that load fzt in-process, and uploads them to that
+# release. The tag is passed as an input, so the build checks out exactly what
+# was released. Every pull request runs the picker builds, signing included,
+# without the upload, so a release is never their first run.
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build artifacts for (and upload to)'
+        required: true
+        type: string
+
+jobs:
+  # On Windows for signtool. upstairspc, host mode: its bash is WSL's
+  # launcher, and the runner's account has an interactive pwsh profile (the
+  # home shell), which a step must not load.
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh -NoLogo -NoProfile -NonInteractive -Command "$ErrorActionPreference = 'Stop'; . ([scriptblock]::Create([IO.File]::ReadAllText('{0}'))); if (Test-Path variable:LASTEXITCODE) { exit $LASTEXITCODE }"
+    env:
+      TAG: ${{ inputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          $engine = go list -m -f '{{.Version}}' github.com/romaine-life/fzt
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          go build -ldflags "-X github.com/romaine-life/fzt/render.Version=$env:TAG -X github.com/romaine-life/fzt-frontend.EngineVersion=$engine" -o fzt-windows-amd64.exe ./cmd/fzt
+
+      # Defender quarantined an unsigned tmux build as Program:Win32/Contebrew.A!ml
+      # and passed the same build signed (TMUX-30). The certificate is at
+      # Terminal's, which every home PC trusts.
+      - name: Sign
+        env:
+          PFX: ${{ secrets.AT_TERMINAL_PFX }}
+          PFX_PASSWORD: ${{ secrets.AT_TERMINAL_PFX_PASSWORD }}
+        run: |
+          if (-not $env:PFX) { throw 'AT_TERMINAL_PFX is not set' }
+          $signtool = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe' | Sort-Object FullName -Descending | Select-Object -First 1
+          [IO.File]::WriteAllBytes("$PWD\cert.pfx", [Convert]::FromBase64String($env:PFX))
+          try {
+            & $signtool.FullName sign /fd SHA256 /f cert.pfx /p $env:PFX_PASSWORD fzt-windows-amd64.exe
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          } finally { Remove-Item cert.pfx }
+
+      # ci.yml builds the DLL on every pull request; this is the release's
+      - name: Build DLL
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          CGO_ENABLED: "1"
+        run: |
+          if (-not (Get-Command gcc -ErrorAction SilentlyContinue)) { throw 'no gcc on the runner (WinLibs, upstairspc winget)' }
+          $engine = go list -m -f '{{.Version}}' github.com/romaine-life/fzt
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          go build -buildmode=c-shared -ldflags "-X github.com/romaine-life/fzt/render.Version=$env:TAG -X github.com/romaine-life/fzt-frontend.EngineVersion=$engine" -o fzt-windows-amd64.dll ./cmd/fztlib
+
+      - if: github.event_name == 'workflow_dispatch'
+        uses: https://data.forgejo.org/forgejo/upload-artifact@v4
+        with:
+          name: windows
+          path: |
+            fzt-windows-amd64.exe
+            fzt-windows-amd64.dll
+
+  unix:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag }}
+      CGO_ENABLED: "0"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build
+        run: |
+          engine=$(go list -m -f '{{.Version}}' github.com/romaine-life/fzt)
+          ldflags="-X github.com/romaine-life/fzt/render.Version=$TAG -X github.com/romaine-life/fzt-frontend.EngineVersion=$engine"
+          GOOS=linux GOARCH=amd64 go build -ldflags="$ldflags" -o fzt-linux-amd64 ./cmd/fzt
+          GOOS=darwin GOARCH=arm64 go build -ldflags="$ldflags" -o fzt-darwin-arm64 ./cmd/fzt
+
+      - if: github.event_name == 'workflow_dispatch'
+        uses: https://data.forgejo.org/forgejo/upload-artifact@v4
+        with:
+          name: unix
+          path: |
+            fzt-linux-amd64
+            fzt-darwin-arm64
+
+  publish:
+    needs: [windows, unix]
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag }}
+    steps:
+      - uses: https://data.forgejo.org/forgejo/download-artifact@v4
+        with:
+          name: windows
+      - uses: https://data.forgejo.org/forgejo/download-artifact@v4
+        with:
+          name: unix
+
+      - name: Upload to release
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          sha256sum fzt-windows-amd64.dll > fzt-windows-amd64.dll.sha256
+          api="$GITHUB_SERVER_URL/api/v1/repos/$GITHUB_REPOSITORY"
+          auth="Authorization: token $TOKEN"
+          files="fzt-windows-amd64.exe fzt-linux-amd64 fzt-darwin-arm64 fzt-windows-amd64.dll fzt-windows-amd64.dll.sha256"
+          curl -fsS -o release.json -H "$auth" "$api/releases/tags/$TAG"
+          id=$(jq -r .id release.json)
+          for f in $files; do
+            [ -f "$f" ] || { echo "::error::$f was not built"; exit 1; }
+            # a rerun replaces the asset, as `gh release upload --clobber` did
+            for old in $(jq -r --arg f "$f" '.assets[] | select(.name == $f) | .id' release.json); do
+              curl -fsS -X DELETE -H "$auth" "$api/releases/$id/assets/$old"
+            done
+            curl -fsS -o /dev/null -H "$auth" -F "attachment=@$f" "$api/releases/$id/assets?name=$f"
+            echo "uploaded $f"
+          done
+          curl -fsS -o release.json -H "$auth" "$api/releases/$id"
+          have=$(jq -r '.assets[].name' release.json | sort | tr '\n' ' ')
+          want=$(printf '%s\n' $files | sort | tr '\n' ' ')
+          if [ "$have" != "$want" ]; then
+            echo "::error::release $TAG has assets [$have], expected [$want]"
+            exit 1
+          fi
+          echo "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$TAG"

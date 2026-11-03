@@ -43,7 +43,7 @@ Shared frontend behavior imported by every fzt app:
 
 ### `host/` and `cmd/fztlib/` -- fzt for apps that draw the menu themselves
 
-`host.Session` wraps a headless tree session for a host app (first one: spotify_player's command palette). The host sends key events and gets back a `Frame` of data to draw (`render.VisibleRow`s, `PromptState`, `UIState`), plus a `Result` once the user picks: `select` with the entry's `action`, `prompt` with typed text after the host called `Prompt`, `command` for a host command from the `:` palette, or `cancel`. `:` palette commands run through `frontend.HandleCommandAction`, as in `tui.Run`. `cmd/fztlib` exports it as C functions taking and returning JSON strings (`fzt_open`, `fzt_key`, `fzt_resize`, `fzt_prompt`, `fzt_close`, `fzt_version`, `fzt_free`); `api.go` holds the logic without cgo so `go test` covers it. Releases attach `fzt-windows-amd64.dll` and its `.sha256`; building it needs MinGW GCC, which CI installs.
+`host.Session` wraps a headless tree session for a host app (first one: spotify_player's command palette). The host sends key events and gets back a `Frame` of data to draw (`render.VisibleRow`s, `PromptState`, `UIState`), plus a `Result` once the user picks: `select` with the entry's `action`, `prompt` with typed text after the host called `Prompt`, `command` for a host command from the `:` palette, or `cancel`. `:` palette commands run through `frontend.HandleCommandAction`, as in `tui.Run`. `cmd/fztlib` exports it as C functions taking and returning JSON strings (`fzt_open`, `fzt_key`, `fzt_resize`, `fzt_prompt`, `fzt_close`, `fzt_version`, `fzt_free`); `api.go` holds the logic without cgo so `go test` covers it. Releases attach `fzt-windows-amd64.dll` and its `.sha256`; building it needs a MinGW GCC (the Windows runner's is WinLibs).
 
 ### `tui/` -- Terminal renderer
 
@@ -238,14 +238,20 @@ go test ./cmd/fzt
 
 ## CI
 
-`.github/workflows/ci.yml` runs on every pull request: `test` (vet + tests) and `dll` (builds `cmd/fztlib`), both required. `main` has the ruleset "main: require PR + green CI" (PR, squash only, required checks), so every change, the bot's dependency bumps included, lands through a pull request.
+The repo lives on Forgejo (https://forgejo.romaine.life/romaine-life/fzt-terminal), which push-mirrors to GitHub, so Go module paths stay `github.com/...`. CI is Forgejo Actions in `.forgejo/workflows`; there are no GitHub workflows.
 
-Two manually-triggered workflows (Claude-driven):
+`.forgejo/workflows/ci.yml` runs on every pull request: `test` (vet + tests) and `dll` (builds `cmd/fztlib`). `build.yml` also runs on every pull request (`windows`, signing included, and `unix`). Forgejo's branch protection on `main` requires a PR and those four checks, so every change, the bot's dependency bumps included, lands through a pull request.
 
-- **`.github/workflows/dispatch.yml`** (`workflow_dispatch`) — dependency bump path. Calls `go-dependency-update-template` to bump `github.com/romaine-life/fzt` + `github.com/romaine-life/fzt-frontend` on a `deps/<run id>` branch, open a PR, merge it once its checks pass, and cut a release at the merged sha.
-- **`.github/workflows/release.yml`** (`workflow_dispatch`) — direct-push release path for code changes. Calls `release-and-dispatch-template` to tag the current main. Shared `release-tag` concurrency group with `dispatch.yml`.
+Two manually-triggered workflows (Claude-driven), run through the Forgejo API with a token (`git credential fill` for forgejo.romaine.life):
 
-Both cut a Go-module release (library consumers `go get` at the tag), then fire **`.github/workflows/build.yml`** with the new tag to build `cmd/fzt` for windows/linux/darwin and attach `fzt-<os>-<arch>[.exe]` to the release. Downstream Go-module consumers (`fzt-picker`, `fzt-automate`, `fzt-browser`) are updated manually per repo — no `repository_dispatch` fan-out.
+```
+curl -X POST -H "Authorization: token $T" -H 'Content-Type: application/json' -d '{"ref":"main"}' https://forgejo.romaine.life/api/v1/repos/romaine-life/fzt-terminal/actions/workflows/release.yml/dispatches
+```
+
+- **`.forgejo/workflows/dispatch.yml`** (`workflow_dispatch`) — dependency bump path. Calls pipeline-templates' `go-dependency-update-template` to bump `github.com/romaine-life/fzt` + `github.com/romaine-life/fzt-frontend` on a `deps/<run id>` branch, open a PR, merge it once its checks pass, and cut a release at the merged sha.
+- **`.forgejo/workflows/release.yml`** (`workflow_dispatch`) — direct-push release path for code changes. Calls `release-and-dispatch-template` to tag the current main. Shared `release-tag` concurrency group with `dispatch.yml`.
+
+Both cut a Go-module release (library consumers `go get` at the tag), then fire **`.forgejo/workflows/build.yml`** with the new tag to build `cmd/fzt` for windows/linux/darwin and the `cmd/fztlib` DLL, and attach `fzt-<os>-<arch>[.exe]`, `fzt-windows-amd64.dll` and its `.sha256` to the Forgejo release. Releases up to v0.1.127 are also on GitHub; later ones are only on Forgejo. Downstream Go-module consumers (`fzt-picker`, `fzt-automate`, `fzt-browser`) are updated manually per repo — no `repository_dispatch` fan-out.
 
 Menu CRUD used to live in `packages/routes/` here (`@nelsong6/fzt-terminal-routes`, mounted at `/at`). Retired 2026-04-18 — all tree CRUD now runs through `@nelsong6/fzt-frontend-routes` at `/fzt/tree/:id` (flat ids like `nelson-menu`). The package directory and its publish workflow were deleted.
 

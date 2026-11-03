@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go vet ./...
+      - run: go test ./...
+
+  dll:
+    # the release builds this DLL; build it on every change so a release isn't its first build
+    runs-on: windows-latest
+    # upstairspc, host mode. The runner's account has an interactive pwsh
+    # profile (the home shell), which a step must not load.
+    defaults:
+      run:
+        shell: pwsh -NoLogo -NoProfile -NonInteractive -Command "$ErrorActionPreference = 'Stop'; . ([scriptblock]::Create([IO.File]::ReadAllText('{0}'))); if (Test-Path variable:LASTEXITCODE) { exit $LASTEXITCODE }"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Build
+        env:
+          CGO_ENABLED: "1"
+        run: |
+          if (-not (Get-Command gcc -ErrorAction SilentlyContinue)) { throw 'no gcc on the runner (WinLibs, upstairspc winget)' }
+          gcc --version | Select-Object -First 1
+          go build -buildmode=c-shared -o fzt-windows-amd64.dll ./cmd/fztlib
+      - uses: https://data.forgejo.org/forgejo/upload-artifact@v4
+        with:
+          name: fzt-windows-amd64-dll
+          path: |
+            fzt-windows-amd64.dll
+            fzt-windows-amd64.h

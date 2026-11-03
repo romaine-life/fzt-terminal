@@ -1,15 +1,9 @@
 name: Dependency Update
 
-# Auto-trigger disabled — Claude-driven CI. Run manually via
-# `gh workflow run dispatch.yml -R romaine-life/fzt-terminal`. Downstream
-# consumers are updated manually per repo.
+# Claude-driven CI, run by hand: dispatch it through the Forgejo API (see
+# CLAUDE.md, CI). Downstream consumers are updated manually per repo.
 on:
   workflow_dispatch:
-
-permissions:
-  contents: write
-  actions: write
-  id-token: write
 
 concurrency:
   # Shared with release.yml so tag-cutting is serialized across dep-update
@@ -19,11 +13,10 @@ concurrency:
 
 jobs:
   update:
-    uses: romaine-life/pipeline-templates/.github/workflows/go-dependency-update-template.yml@main
+    uses: romaine-life/pipeline-templates/.forgejo/workflows/go-dependency-update-template.yml@main
+    secrets: inherit
     with:
       modules: github.com/romaine-life/fzt github.com/romaine-life/fzt-frontend
       # Template handles bump + release atomically, then fires build.yml to
       # attach the `fzt` picker binaries to the new release.
       artifact-build-workflow: build.yml
-      # Downstream (fzt-picker, fzt-automate, fzt-browser) is Claude-driven —
-      # no repository_dispatch fan-out.
