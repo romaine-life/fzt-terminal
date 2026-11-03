@@ -253,7 +253,7 @@ curl -X POST -H "Authorization: token $T" -H 'Content-Type: application/json' -d
 
 Both cut a Go-module release (library consumers `go get` at the tag), then fire **`.forgejo/workflows/build.yml`** with the new tag to build `cmd/fzt` for windows/linux/darwin and the `cmd/fztlib` DLL, and attach `fzt-<os>-<arch>[.exe]`, `fzt-windows-amd64.dll` and its `.sha256` to the Forgejo release. Releases up to v0.1.127 are also on GitHub; later ones are only on Forgejo. Downstream Go-module consumers (`fzt-picker`, `fzt-automate`, `fzt-browser`) are updated manually per repo — no `repository_dispatch` fan-out.
 
-Publish the latest Forgejo release to the existing home tools share with `pwsh -NoProfile -File .\publish.ps1`. The script authenticates through Git's Forgejo credential helper, downloads `fzt-windows-amd64.exe`, checks its signature, and runs `publish-tool -Name fzt -Version $tag -Path (Join-Path $dir 'fzt.exe') -Entry fzt.exe -Repo "https://forgejo.romaine.life/$repo" -Commit $commit`. Keep this script until HOMECFG-110 replaces publishing.
+CI publishes signed release assets and starts home-sync on every PC. home-sync verifies the signatures and installs the release under C:\Program Files\at-home\fzt, switching its current junction and PATH automatically. The manual publish.ps1 was retired by HOMECFG-110.
 
 Menu CRUD used to live in `packages/routes/` here (`@nelsong6/fzt-terminal-routes`, mounted at `/at`). Retired 2026-04-18 — all tree CRUD now runs through `@nelsong6/fzt-frontend-routes` at `/fzt/tree/:id` (flat ids like `nelson-menu`). The package directory and its publish workflow were deleted.
 
