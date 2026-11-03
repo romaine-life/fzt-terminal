@@ -2,10 +2,20 @@ name: CI
 
 on:
   pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  GOMAXPROCS: "2"
+  GOFLAGS: -p=2
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh -NoLogo -NoProfile -NonInteractive -Command "$ErrorActionPreference = 'Stop'; . ([scriptblock]::Create([IO.File]::ReadAllText('{0}'))); if (Test-Path variable:LASTEXITCODE) { exit $LASTEXITCODE }"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5

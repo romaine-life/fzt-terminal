@@ -9,6 +9,8 @@ name: Build
 
 on:
   pull_request:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       tag:
@@ -44,6 +46,16 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           go build -ldflags "-X github.com/romaine-life/fzt/render.Version=$env:TAG -X github.com/romaine-life/fzt-frontend.EngineVersion=$engine" -o fzt-windows-amd64.exe ./cmd/fzt
 
+      - name: Build DLL
+        env:
+          CGO_ENABLED: "1"
+        run: |
+          if (-not (Get-Command gcc -ErrorAction SilentlyContinue)) { throw 'no gcc on the runner (WinLibs, upstairspc winget)' }
+          $engine = go list -m -f '{{.Version}}' github.com/romaine-life/fzt
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          go build -buildmode=c-shared -ldflags "-X github.com/romaine-life/fzt/render.Version=$env:TAG -X github.com/romaine-life/fzt-frontend.EngineVersion=$engine" -o fzt-windows-amd64.dll ./cmd/fztlib
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+
       # Defender quarantined an unsigned tmux build as Program:Win32/Contebrew.A!ml
       # and passed the same build signed (TMUX-30). The certificate is at
       # Terminal's, which every home PC trusts.
@@ -56,20 +68,18 @@ jobs:
           $signtool = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe' | Sort-Object FullName -Descending | Select-Object -First 1
           [IO.File]::WriteAllBytes("$PWD\cert.pfx", [Convert]::FromBase64String($env:PFX))
           try {
-            & $signtool.FullName sign /fd SHA256 /f cert.pfx /p $env:PFX_PASSWORD fzt-windows-amd64.exe
+            & $signtool.FullName sign /fd SHA256 /f cert.pfx /p $env:PFX_PASSWORD fzt-windows-amd64.exe fzt-windows-amd64.dll
             if ($LASTEXITCODE) { exit $LASTEXITCODE }
+            $certificate = [Security.Cryptography.X509Certificates.X509Certificate2]::new("$PWD\cert.pfx", $env:PFX_PASSWORD)
+            foreach ($file in 'fzt-windows-amd64.exe', 'fzt-windows-amd64.dll') {
+              $signature = Get-AuthenticodeSignature $file
+              if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne $certificate.Thumbprint) {
+                throw "Invalid signing certificate on $file ($($signature.Status))"
+              }
+              Write-Host "$file signed by $($signature.SignerCertificate.Thumbprint)"
+            }
+            $certificate.Dispose()
           } finally { Remove-Item cert.pfx }
-
-      # ci.yml builds the DLL on every pull request; this is the release's
-      - name: Build DLL
-        if: github.event_name == 'workflow_dispatch'
-        env:
-          CGO_ENABLED: "1"
-        run: |
-          if (-not (Get-Command gcc -ErrorAction SilentlyContinue)) { throw 'no gcc on the runner (WinLibs, upstairspc winget)' }
-          $engine = go list -m -f '{{.Version}}' github.com/romaine-life/fzt
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          go build -buildmode=c-shared -ldflags "-X github.com/romaine-life/fzt/render.Version=$env:TAG -X github.com/romaine-life/fzt-frontend.EngineVersion=$engine" -o fzt-windows-amd64.dll ./cmd/fztlib
 
       - if: github.event_name == 'workflow_dispatch'
         uses: https://data.forgejo.org/forgejo/upload-artifact@v4
@@ -80,7 +90,12 @@ jobs:
             fzt-windows-amd64.dll
 
   unix:
-    runs-on: ubuntu-latest
+    # Pure-Go cross-compiles use the fast Windows pool, leaving the NAS for
+    # the small release/upload steps.
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh -NoLogo -NoProfile -NonInteractive -Command "$ErrorActionPreference = 'Stop'; . ([scriptblock]::Create([IO.File]::ReadAllText('{0}'))); if (Test-Path variable:LASTEXITCODE) { exit $LASTEXITCODE }"
     env:
       TAG: ${{ inputs.tag }}
       CGO_ENABLED: "0"
@@ -95,10 +110,15 @@ jobs:
 
       - name: Build
         run: |
-          engine=$(go list -m -f '{{.Version}}' github.com/romaine-life/fzt)
-          ldflags="-X github.com/romaine-life/fzt/render.Version=$TAG -X github.com/romaine-life/fzt-frontend.EngineVersion=$engine"
-          GOOS=linux GOARCH=amd64 go build -ldflags="$ldflags" -o fzt-linux-amd64 ./cmd/fzt
-          GOOS=darwin GOARCH=arm64 go build -ldflags="$ldflags" -o fzt-darwin-arm64 ./cmd/fzt
+          $engine = go list -m -f '{{.Version}}' github.com/romaine-life/fzt
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $ldflags = "-X github.com/romaine-life/fzt/render.Version=$env:TAG -X github.com/romaine-life/fzt-frontend.EngineVersion=$engine"
+          $env:GOOS = 'linux'; $env:GOARCH = 'amd64'
+          go build -ldflags $ldflags -o fzt-linux-amd64 ./cmd/fzt
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $env:GOOS = 'darwin'; $env:GOARCH = 'arm64'
+          go build -ldflags $ldflags -o fzt-darwin-arm64 ./cmd/fzt
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
       - if: github.event_name == 'workflow_dispatch'
         uses: https://data.forgejo.org/forgejo/upload-artifact@v4
@@ -111,7 +131,9 @@ jobs:
   publish:
     needs: [windows, unix]
     if: github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    # Forgejo asks a runner to evaluate this job's skip condition. PR/main
+    # skips must not wait behind builds on the only NAS worker.
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && 'ubuntu-latest' || 'windows-latest' }}
     env:
       TAG: ${{ inputs.tag }}
     steps:
@@ -121,6 +143,12 @@ jobs:
       - uses: https://data.forgejo.org/forgejo/download-artifact@v4
         with:
           name: unix
+
+      - name: Smoke test Linux binary
+        run: |
+          chmod +x fzt-linux-amd64
+          result=$(printf 'beta\nalpha\n' | ./fzt-linux-amd64 --filter alpha)
+          [ "$result" = alpha ] || { echo "::error::Linux filter smoke test failed: $result"; exit 1; }
 
       - name: Upload to release
         env:

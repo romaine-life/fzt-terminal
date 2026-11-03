@@ -240,7 +240,7 @@ go test ./cmd/fzt
 
 The repo lives on Forgejo (https://forgejo.romaine.life/romaine-life/fzt-terminal), which push-mirrors to GitHub, so Go module paths stay `github.com/...`. CI is Forgejo Actions in `.forgejo/workflows`; there are no GitHub workflows.
 
-`.forgejo/workflows/ci.yml` runs on every pull request: `test` (vet + tests) and `dll` (builds `cmd/fztlib`). `build.yml` also runs on every pull request (`windows`, signing included, and `unix`). Forgejo's branch protection on `main` requires a PR and those four checks, so every change, the bot's dependency bumps included, lands through a pull request.
+`.forgejo/workflows/ci.yml` runs on every pull request and push to main: `test` (vet + tests) and `dll` (builds `cmd/fztlib`), both on Windows. `build.yml` runs on those events too: `windows` builds and signs both the exe and DLL, verifies their signatures against the signing certificate, and `unix` cross-compiles Linux amd64 and Darwin arm64 with `CGO_ENABLED=0` on the fast Windows pool. The Windows DLL needs CGO and the runner's MinGW GCC; the CLI needs no Mac runner. The NAS only runs the small release/upload steps, including a native Linux filter smoke test before uploading a release. Forgejo's branch protection on `main` requires a PR and those four checks, so every change, the bot's dependency bumps included, lands through a pull request.
 
 Two manually-triggered workflows (Claude-driven), run through the Forgejo API with a token (`git credential fill` for forgejo.romaine.life):
 
@@ -248,10 +248,12 @@ Two manually-triggered workflows (Claude-driven), run through the Forgejo API wi
 curl -X POST -H "Authorization: token $T" -H 'Content-Type: application/json' -d '{"ref":"main"}' https://forgejo.romaine.life/api/v1/repos/romaine-life/fzt-terminal/actions/workflows/release.yml/dispatches
 ```
 
-- **`.forgejo/workflows/dispatch.yml`** (`workflow_dispatch`) — dependency bump path. Calls pipeline-templates' `go-dependency-update-template` to bump `github.com/romaine-life/fzt` + `github.com/romaine-life/fzt-frontend` on a `deps/<run id>` branch, open a PR, merge it once its checks pass, and cut a release at the merged sha.
-- **`.forgejo/workflows/release.yml`** (`workflow_dispatch`) — direct-push release path for code changes. Calls `release-and-dispatch-template` to tag the current main. Shared `release-tag` concurrency group with `dispatch.yml`.
+- **`.forgejo/workflows/dispatch.yml`** (`workflow_dispatch`) — dependency bump path. Reads `github.com/romaine-life/fzt` + `github.com/romaine-life/fzt-frontend` from GitHub, where those modules still live, opens a PR, and schedules its merge once checks pass. It releases the only NAS runner before the PR's checks run. The merge triggers `release.yml`.
+- **`.forgejo/workflows/release.yml`** (`workflow_dispatch`, or a merged dependency bump) — release path for code changes. Calls pipeline-templates' Forgejo `release-and-dispatch-template` to tag the current main with the next `v0.1.N`. Cross-repo reusable workflows were verified live in Forgejo run 9. The template serializes releases per repository.
 
 Both cut a Go-module release (library consumers `go get` at the tag), then fire **`.forgejo/workflows/build.yml`** with the new tag to build `cmd/fzt` for windows/linux/darwin and the `cmd/fztlib` DLL, and attach `fzt-<os>-<arch>[.exe]`, `fzt-windows-amd64.dll` and its `.sha256` to the Forgejo release. Releases up to v0.1.127 are also on GitHub; later ones are only on Forgejo. Downstream Go-module consumers (`fzt-picker`, `fzt-automate`, `fzt-browser`) are updated manually per repo — no `repository_dispatch` fan-out.
+
+Publish the latest Forgejo release to the existing home tools share with `pwsh -NoProfile -File .\publish.ps1`. The script authenticates through Git's Forgejo credential helper, downloads `fzt-windows-amd64.exe`, checks its signature, and runs `publish-tool -Name fzt -Version $tag -Path (Join-Path $dir 'fzt.exe') -Entry fzt.exe -Repo "https://forgejo.romaine.life/$repo" -Commit $commit`. Keep this script until HOMECFG-110 replaces publishing.
 
 Menu CRUD used to live in `packages/routes/` here (`@nelsong6/fzt-terminal-routes`, mounted at `/at`). Retired 2026-04-18 — all tree CRUD now runs through `@nelsong6/fzt-frontend-routes` at `/fzt/tree/:id` (flat ids like `nelson-menu`). The package directory and its publish workflow were deleted.
 

@@ -2,21 +2,104 @@ name: Dependency Update
 
 # Claude-driven CI, run by hand: dispatch it through the Forgejo API (see
 # CLAUDE.md, CI). Downstream consumers are updated manually per repo.
+#
+# Bumps github.com/romaine-life/fzt and fzt-frontend to their latest tags
+# and opens a pull request for the bump that Forgejo merges once main's
+# required checks pass; the merge's push to main runs release.yml, which cuts
+# the release. Kept local so the dependency PR does not hold the single NAS
+# runner while its checks run.
+#
+# The branch push, PR and merge use PIPELINE_DISPATCH_TOKEN (nelson,
+# write:repository): a push made with the job's own token does not start the
+# PR's CI, nor the merge's push release.yml.
+
 on:
   workflow_dispatch:
 
 concurrency:
-  # Shared with release.yml so tag-cutting is serialized across dep-update
-  # and direct-push release paths (prevents patch-number races).
-  group: release-tag
+  # one bump at a time
+  group: dependency-update
   cancel-in-progress: false
 
 jobs:
   update:
-    uses: romaine-life/pipeline-templates/.forgejo/workflows/go-dependency-update-template.yml@main
-    secrets: inherit
-    with:
-      modules: github.com/romaine-life/fzt github.com/romaine-life/fzt-frontend
-      # Template handles bump + release atomically, then fires build.yml to
-      # attach the `fzt` picker binaries to the new release.
-      artifact-build-workflow: build.yml
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      MODULES: github.com/romaine-life/fzt github.com/romaine-life/fzt-frontend
+      GOMAXPROCS: "2"
+      GOFLAGS: -p=2
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+          # the bump branch is pushed with PIPELINE_DISPATCH_TOKEN
+          persist-credentials: false
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # GOPRIVATE reads the modules straight from their public GitHub repos,
+      # their home, so @latest is never a proxy's stale cache.
+      - name: Update dependencies
+        env:
+          GOPRIVATE: github.com/romaine-life/*
+        run: |
+          for mod in $MODULES; do
+            echo "Updating $mod..."
+            go get "${mod}@latest"
+          done
+          go mod tidy
+
+      - name: Check for changes
+        id: diff
+        run: |
+          if git diff --quiet go.mod go.sum; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Already on latest"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            git diff go.mod
+          fi
+
+      - name: Merge the bump through a pull request
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          T: ${{ secrets.PIPELINE_DISPATCH_TOKEN }}
+          API: ${{ github.server_url }}/api/v1/repos/${{ github.repository }}
+          REMOTE: ${{ github.server_url }}/${{ github.repository }}.git
+          BASE: ${{ github.ref_name }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_number }}
+        run: |
+          msg="deps: update $(echo "$MODULES" | sed 's|github.com/romaine-life/||g' | sed 's/ /, /g')"
+          branch="FORGEJO-3-deps/${{ github.run_id }}"
+          git config user.name "forgejo-actions"
+          git config user.email "forgejo-actions@noreply.romaine.life"
+          git checkout -b "$branch"
+          git add go.mod go.sum
+          git commit -m "$msg"
+          git -c credential.helper= \
+            -c 'credential.helper=!f() { echo username=x-access-token; printf "password=%s\n" "$T"; }; f' \
+            push "$REMOTE" "HEAD:refs/heads/$branch"
+
+          body=$(jq -n --arg base "$BASE" --arg head "$branch" --arg title "$msg" \
+            --arg body "Opened by Dependency Update: $RUN_URL. https://openproject.romaine.life/wp/FORGEJO-3" \
+            '{base: $base, head: $head, title: $title, body: $body}')
+          code=$(printf 'header = "Authorization: token %s"\n' "$T" | curl --config - -sS -o pr.json -w '%{http_code}' -X POST \
+            -H 'Content-Type: application/json' \
+            -d "$body" "$API/pulls")
+          if [ "$code" != 201 ]; then echo "::error::opening the PR returned HTTP $code"; cat pr.json; exit 1; fi
+          n=$(jq -r .number pr.json)
+          pr=$(jq -r .html_url pr.json)
+          echo "Opened $pr"
+
+          # Forgejo merges it once main's required checks pass, as the PR's
+          # author; that push runs release.yml. Waiting here instead would hold
+          # the only Linux runner the PR's own checks need.
+          code=$(printf 'header = "Authorization: token %s"\n' "$T" | curl --config - -sS -o merge.json -w '%{http_code}' -X POST \
+            -H 'Content-Type: application/json' \
+            -d '{"Do":"squash","delete_branch_after_merge":true,"merge_when_checks_succeed":true}' "$API/pulls/$n/merge")
+          if [ "$code" != 200 ] && [ "$code" != 201 ]; then echo "::error::scheduling the merge of $pr returned HTTP $code"; cat merge.json; exit 1; fi
+          echo "$pr merges once its checks pass"
