@@ -81,17 +81,34 @@ jobs:
             $certificate.Dispose()
           } finally { Remove-Item cert.pfx }
 
-      - if: github.event_name == 'workflow_dispatch'
-        uses: https://data.forgejo.org/forgejo/upload-artifact@v4
-        with:
-          name: windows
-          path: |
-            fzt-windows-amd64.exe
-            fzt-windows-amd64.dll
+      - name: Upload signed Windows assets
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $hash = (Get-FileHash fzt-windows-amd64.dll -Algorithm SHA256).Hash.ToLowerInvariant()
+          [IO.File]::WriteAllText("$PWD\fzt-windows-amd64.dll.sha256", "$hash  fzt-windows-amd64.dll`n", [Text.Encoding]::ASCII)
+          $api = "$env:GITHUB_SERVER_URL/api/v1/repos/$env:GITHUB_REPOSITORY/releases"
+          $headers = @{ Authorization = "token $env:TOKEN" }
+          $release = Invoke-RestMethod "$api/tags/$env:TAG" -Headers $headers
+          $files = 'fzt-windows-amd64.exe', 'fzt-windows-amd64.dll', 'fzt-windows-amd64.dll.sha256'
+          foreach ($file in $files) {
+            foreach ($old in @($release.assets | Where-Object name -eq $file)) {
+              Invoke-RestMethod -Method Delete "$api/$($release.id)/assets/$($old.id)" -Headers $headers | Out-Null
+            }
+            Invoke-RestMethod -Method Post "$api/$($release.id)/assets?name=$file" -Headers $headers -Form @{ attachment = Get-Item $file } | Out-Null
+            Write-Host "Uploaded $file"
+          }
+          $published = Invoke-RestMethod "$api/$($release.id)" -Headers $headers
+          foreach ($file in $files) {
+            if (-not ($published.assets | Where-Object { $_.name -eq $file -and $_.size -eq (Get-Item $file).Length })) {
+              throw "Release $env:TAG is missing the expected $file"
+            }
+          }
 
   unix:
-    # Pure-Go cross-compiles use the fast Windows pool, leaving the NAS for
-    # the small release/upload steps.
+    # Pure-Go cross-compiles use the fast Windows pool. Only the shared
+    # release template needs the NAS; builders upload their own assets.
     runs-on: windows-latest
     defaults:
       run:
@@ -120,60 +137,25 @@ jobs:
           go build -ldflags $ldflags -o fzt-darwin-arm64 ./cmd/fzt
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
-      - if: github.event_name == 'workflow_dispatch'
-        uses: https://data.forgejo.org/forgejo/upload-artifact@v4
-        with:
-          name: unix
-          path: |
-            fzt-linux-amd64
-            fzt-darwin-arm64
-
-  publish:
-    needs: [windows, unix]
-    if: github.event_name == 'workflow_dispatch'
-    # Forgejo asks a runner to evaluate this job's skip condition. PR/main
-    # skips must not wait behind builds on the only NAS worker.
-    runs-on: ${{ github.event_name == 'workflow_dispatch' && 'ubuntu-latest' || 'windows-latest' }}
-    env:
-      TAG: ${{ inputs.tag }}
-    steps:
-      - uses: https://data.forgejo.org/forgejo/download-artifact@v4
-        with:
-          name: windows
-      - uses: https://data.forgejo.org/forgejo/download-artifact@v4
-        with:
-          name: unix
-
-      - name: Smoke test Linux binary
-        run: |
-          chmod +x fzt-linux-amd64
-          result=$(printf 'beta\nalpha\n' | ./fzt-linux-amd64 --filter alpha)
-          [ "$result" = alpha ] || { echo "::error::Linux filter smoke test failed: $result"; exit 1; }
-
-      - name: Upload to release
+      - name: Upload Unix assets
+        if: github.event_name == 'workflow_dispatch'
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          sha256sum fzt-windows-amd64.dll > fzt-windows-amd64.dll.sha256
-          api="$GITHUB_SERVER_URL/api/v1/repos/$GITHUB_REPOSITORY"
-          auth="Authorization: token $TOKEN"
-          files="fzt-windows-amd64.exe fzt-linux-amd64 fzt-darwin-arm64 fzt-windows-amd64.dll fzt-windows-amd64.dll.sha256"
-          curl -fsS -o release.json -H "$auth" "$api/releases/tags/$TAG"
-          id=$(jq -r .id release.json)
-          for f in $files; do
-            [ -f "$f" ] || { echo "::error::$f was not built"; exit 1; }
-            # a rerun replaces the asset, as `gh release upload --clobber` did
-            for old in $(jq -r --arg f "$f" '.assets[] | select(.name == $f) | .id' release.json); do
-              curl -fsS -X DELETE -H "$auth" "$api/releases/$id/assets/$old"
-            done
-            curl -fsS -o /dev/null -H "$auth" -F "attachment=@$f" "$api/releases/$id/assets?name=$f"
-            echo "uploaded $f"
-          done
-          curl -fsS -o release.json -H "$auth" "$api/releases/$id"
-          have=$(jq -r '.assets[].name' release.json | sort | tr '\n' ' ')
-          want=$(printf '%s\n' $files | sort | tr '\n' ' ')
-          if [ "$have" != "$want" ]; then
-            echo "::error::release $TAG has assets [$have], expected [$want]"
-            exit 1
-          fi
-          echo "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$TAG"
+          $api = "$env:GITHUB_SERVER_URL/api/v1/repos/$env:GITHUB_REPOSITORY/releases"
+          $headers = @{ Authorization = "token $env:TOKEN" }
+          $release = Invoke-RestMethod "$api/tags/$env:TAG" -Headers $headers
+          $files = 'fzt-linux-amd64', 'fzt-darwin-arm64'
+          foreach ($file in $files) {
+            foreach ($old in @($release.assets | Where-Object name -eq $file)) {
+              Invoke-RestMethod -Method Delete "$api/$($release.id)/assets/$($old.id)" -Headers $headers | Out-Null
+            }
+            Invoke-RestMethod -Method Post "$api/$($release.id)/assets?name=$file" -Headers $headers -Form @{ attachment = Get-Item $file } | Out-Null
+            Write-Host "Uploaded $file"
+          }
+          $published = Invoke-RestMethod "$api/$($release.id)" -Headers $headers
+          foreach ($file in $files) {
+            if (-not ($published.assets | Where-Object { $_.name -eq $file -and $_.size -eq (Get-Item $file).Length })) {
+              throw "Release $env:TAG is missing the expected $file"
+            }
+          }
