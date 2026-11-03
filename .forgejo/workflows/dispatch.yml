@@ -37,9 +37,8 @@ jobs:
         with:
           go-version-file: go.mod
 
-      # GOPRIVATE reads the modules straight from their public GitHub repos
-      # (fzt-frontend's is Forgejo's push mirror), so @latest is never a
-      # proxy's stale cache.
+      # GOPRIVATE reads the modules straight from their public GitHub repos,
+      # their home, so @latest is never a proxy's stale cache.
       - name: Update dependencies
         env:
           GOPRIVATE: github.com/romaine-life/*
