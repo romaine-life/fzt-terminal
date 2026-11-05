@@ -45,6 +45,12 @@ Shared frontend behavior imported by every fzt app:
 
 `host.Session` wraps a headless tree session for a host app (first one: spotify_player's command palette). The host sends key events and gets back a `Frame` of data to draw (`render.VisibleRow`s, `PromptState`, `UIState`), plus a `Result` once the user picks: `select` with the entry's `action`, `prompt` with typed text after the host called `Prompt`, `command` for a host command from the `:` palette, or `cancel`. `:` palette commands run through `frontend.HandleCommandAction`, as in `tui.Run`. `cmd/fztlib` exports it as C functions taking and returning JSON strings (`fzt_open`, `fzt_key`, `fzt_resize`, `fzt_prompt`, `fzt_close`, `fzt_version`, `fzt_free`); `api.go` holds the logic without cgo so `go test` covers it. Releases attach `fzt-windows-amd64.dll` and its `.sha256`; building it needs a MinGW GCC (the Windows runner's is WinLibs).
 
+### `internal/faillog` -- the failure log
+
+`fzt` and the DLL write failures, and nothing else, to `%LOCALAPPDATA%ztzt.log`, which `appLogs` in the home profile's `machine/state.json` sends to the app log pile (OpenProject FT-1, at-home-tools `docs/app-logs.md`). Every exit 2 writes a line: an unknown or bad flag, a `--yaml` that won't load, input that can't be read, a terminal that won't open, a result that can't be written. So does a panic on the main goroutine or at the DLL's boundary, which then carries on and dies as before; a fatal runtime error (a concurrent map write) or a panic on another goroutine reaches stderr only. A pick, a cancel, an empty list and `--filter` write nothing.
+
+The pile can be read by any everyday NAS sign-in, so a line never holds a query, a pick, an item, a path or a flag's value: stderr gets the full text, and `cmd/fzt` hands the log a reduced one (`fail`, `flagError`, `yamlCause`). The flags that were set are logged by name, since they say which tool called fzt. A panic is logged by its runtime error text, or only its type for any other value, plus function names and lines. Library callers of `tui` keep their own logs; nothing under `tui/` writes here. A line is one write, so concurrent fzts keep it whole (`internal/faillog` tests this across processes), and the file rolls to `fzt.log.old` past 1 MB.
+
 ### `tui/` -- Terminal renderer
 
 Full-screen TUI rendering via tcell. Key files:

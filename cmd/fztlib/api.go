@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/romaine-life/fzt-terminal/host"
+	"github.com/romaine-life/fzt-terminal/internal/faillog"
 )
 
 // response is every call's reply: the session id from open, the frame to draw, or the error.
@@ -33,6 +34,7 @@ func fail(err error) string {
 }
 
 func open(menu, options string) string {
+	defer faillog.Crash()
 	var opts host.Options
 	if err := json.Unmarshal([]byte(options), &opts); err != nil {
 		return fail(err)
@@ -52,6 +54,7 @@ func open(menu, options string) string {
 
 // with runs fn on an open session, one call at a time
 func with(id int, fn func(*host.Session) (host.Frame, error)) string {
+	defer faillog.Crash()
 	mu.Lock()
 	defer mu.Unlock()
 	s, ok := sessions[id]

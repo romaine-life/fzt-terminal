@@ -9,23 +9,29 @@
 //	ls | fzt --filter "query"          # non-interactive: ranked matches
 //	$rows | fzt --input-col 3          # rows with a 3rd field ask for text
 //
-// Exit codes follow fzf: 0 selected, 1 no input, 130 cancelled.
+// Exit codes follow fzf: 0 selected, 1 no input, 2 failed (logged), 130 cancelled.
 package main
 
 import (
 	"bufio"
+	"errors"
 	"flag"
 	"fmt"
+	"io/fs"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 
+	"github.com/romaine-life/fzt-terminal/internal/faillog"
 	"github.com/romaine-life/fzt-terminal/tui"
 	"github.com/romaine-life/fzt/core"
 	"github.com/romaine-life/fzt/render"
 )
 
 func main() {
+	defer faillog.Crash()
+	flag.CommandLine.Init(os.Args[0], flag.ContinueOnError)
 	var (
 		layout       = flag.String("layout", "default", "Layout: 'default' (prompt at bottom) or 'reverse' (prompt at top)")
 		border       = flag.Bool("border", false, "Draw border around the finder")
@@ -52,7 +58,13 @@ func main() {
 	flag.StringVar(delimiter, "d", "\t", "Field delimiter (shorthand)")
 	// Accepted for fzf compatibility; the picker always takes the full screen.
 	flag.String("height", "", "Ignored (fzf compatibility)")
-	flag.Parse()
+	if err := flag.CommandLine.Parse(os.Args[1:]); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			os.Exit(0)
+		}
+		logFailure(flagError(err)) // flag has already told stderr
+		os.Exit(2)
+	}
 
 	if *version {
 		fmt.Println(render.Version)
@@ -85,8 +97,7 @@ func main() {
 		var err error
 		items, err = core.LoadYAML(*yamlPath)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "fzt: loading yaml: %v\n", err)
-			os.Exit(2)
+			fail(fmt.Sprintf("loading yaml: %v", err), "couldn't load --yaml: "+yamlCause(err))
 		}
 		cfg.Tiered = true
 		cfg.TreeMode = true
@@ -100,8 +111,7 @@ func main() {
 	} else {
 		lines, err := readStdin()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "fzt: %v\n", err)
-			os.Exit(2)
+			fail(err.Error(), "couldn't read input: "+err.Error())
 		}
 		if len(lines) == 0 {
 			os.Exit(1)
@@ -120,13 +130,49 @@ func main() {
 
 	pick, err := tui.Run(items, cfg)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "fzt: %v\n", err)
-		os.Exit(2)
+		fail(err.Error(), "couldn't open the terminal: "+err.Error())
 	}
 	if pick.Kind == "cancel" {
 		os.Exit(130)
 	}
-	fmt.Println(pick.Output)
+	if _, err := fmt.Println(pick.Output); err != nil {
+		fail(err.Error(), "couldn't write the result: "+err.Error())
+	}
+}
+
+// fail ends the run on exit 2. shown goes to whoever ran fzt and can name anything;
+// logged goes to the pile, so it holds no path, item or text from the caller.
+func fail(shown, logged string) {
+	fmt.Fprintln(os.Stderr, "fzt: "+shown)
+	logFailure(logged)
+	os.Exit(2)
+}
+
+// logFailure adds the flags that were set, without their values: fzt runs inside other
+// tools, and those names are what say which one called it.
+func logFailure(what string) {
+	var set []string
+	flag.Visit(func(f *flag.Flag) { set = append(set, f.Name) })
+	faillog.Write(what + " (flags: " + strings.Join(set, ",") + ")")
+}
+
+// flagError keeps a parse error only when it holds nothing but a flag's name.
+func flagError(err error) string {
+	text := err.Error()
+	if ok, _ := regexp.MatchString(`^flag (provided but not defined|needs an argument): -[a-z0-9-]+$`, text); ok {
+		return text
+	}
+	return "a flag has a bad value"
+}
+
+// yamlCause says why a file wouldn't load, without its path or the content a parse error
+// quotes.
+func yamlCause(err error) string {
+	var pathErr *fs.PathError
+	if errors.As(err, &pathErr) {
+		return pathErr.Err.Error()
+	}
+	return "not a valid menu"
 }
 
 func readStdin() ([]string, error) {
