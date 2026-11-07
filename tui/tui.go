@@ -602,7 +602,9 @@ func (l *Live) Reload(items []core.Item) { l.post(liveEvent{reload: items}) }
 
 // Show replaces the menu with another list under another Config, keeping the
 // panel. A frontend whose command has several steps moves between them on one
-// screen, so nothing flashes.
+// screen, so nothing flashes. Such a menu is one step of something: Escape
+// clears what was typed, then sends a "cancel" pick from any folder, and the
+// title stays the frontend's.
 func (l *Live) Show(items []core.Item, cfg Config) {
 	l.post(liveEvent{show: &liveView{items, cfg}})
 }
@@ -674,6 +676,7 @@ func sessionLoop(screen tcell.Screen, items []core.Item, cfg Config, live *Live,
 	canvas := &tcellCanvas{screen: screen}
 	var inputItem core.Item // the input leaf whose text the prompt is taking
 	var asking *liveAsk     // the Live.Ask question the prompt is taking
+	stepped := false        // the menu came from Live.Show
 
 	// Background sync check — runs once if overdue
 	initSyncCheck(s, cfg, func() {
@@ -734,10 +737,21 @@ func sessionLoop(screen tcell.Screen, items []core.Item, cfg Config, live *Live,
 				}
 				break
 			}
+			if stepped && ev.Key() == tcell.KeyEscape && s.PromptMode == "" {
+				if len(s.TopCtx().Query) > 0 {
+					clearSearch(s)
+				} else if end(Pick{Kind: "cancel"}) {
+					return
+				}
+				break
+			}
 			wasRenaming := s.EditMode == "rename"
 			pending := pendingInput(s)
 			shift := ev.Modifiers()&tcell.ModShift != 0
 			r := core.HandleUnifiedKeyResult(s, ev.Key(), ev.Rune(), shift, cfg, searchCols)
+			if stepped {
+				s.ClearTitle()
+			}
 			if pick, ok := inputPick(pending, inputItem, r.Action); ok {
 				asking = nil
 				if end(pick) {
@@ -787,7 +801,7 @@ func sessionLoop(screen tcell.Screen, items []core.Item, cfg Config, live *Live,
 					inputItem, asking = core.Item{}, nil
 				case e.show != nil:
 					panel, overruns := s.Panel, s.Overruns
-					cfg = e.show.cfg
+					cfg, stepped = e.show.cfg, true
 					s, searchCols = newLoopState(e.show.items, cfg)
 					s.Panel, s.Overruns = panel, overruns
 					inputItem, asking = core.Item{}, nil

@@ -43,7 +43,7 @@ Shared frontend behavior imported by every fzt app:
 
 ### `tui.Live` -- a frontend that stays open
 
-`RunLoop` hands every pick to a frontend with the menu still on screen; `Live` changes the menu from any goroutine. `Update` edits the state, `Reload` swaps the items, `Show` swaps the items and the `Config` (one screen for a command's several steps, so nothing flashes), and `Ask` takes over the text box for one answer, which returns as an `input` pick, with Escape as a `cancel`. fzt-picker's `fzt-files` walks a command through its steps this way.
+`RunLoop` hands every pick to a frontend with the menu still on screen; `Live` changes the menu from any goroutine. `Update` edits the state, `Reload` swaps the items, `Show` swaps the items and the `Config` (one screen for a command's several steps, so nothing flashes; Escape there clears the search, then sends a `cancel` from any folder, and fzt's letter navigation never takes over the title), and `Ask` takes over the text box for one answer, which returns as an `input` pick, with Escape as a `cancel`. fzt-picker's `fzt-files` walks a command through its steps this way.
 
 ### `host/` and `cmd/fztlib/` -- fzt for apps that draw the menu themselves
 

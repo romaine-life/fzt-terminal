@@ -280,3 +280,51 @@ func TestPromptTextLongerThanTheBoxKeepsTheCursorInside(t *testing.T) {
 		t.Fatalf("cursor at %d,%d shown=%v on a %d-wide screen", x, y, shown, w)
 	}
 }
+
+const stepYAML = `
+- name: music
+  children:
+    - name: take.wav
+      action: take
+- name: notes.txt
+  action: notes
+`
+
+func TestSteppedEscapeClearsThenLeavesFromAnyFolder(t *testing.T) {
+	h := startLoop(t, loopYAML, loopCfg())
+	items, err := core.LoadYAMLFromString(stepYAML)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := loopCfg()
+	cfg.ScopedView = true
+	h.live.Show(items, cfg)
+	h.keys("music")
+	h.waitRow(6, "music")
+	h.keys(" ")
+	h.waitRow(8, "take.wav")
+	h.keys("take")
+	h.waitRow(6, "take")
+	h.key(tcell.KeyEscape)
+	h.noPick()
+	h.key(tcell.KeyEscape)
+	if p := h.pick(); p.Kind != "cancel" {
+		t.Fatalf("Escape in a folder = %+v, want a cancel", p)
+	}
+}
+
+func TestSteppedLetterNavigationLeavesTheTitleAlone(t *testing.T) {
+	h := startLoop(t, loopYAML, loopCfg())
+	items, err := core.LoadYAMLFromString(stepYAML)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := loopCfg()
+	cfg.Border, cfg.Title = true, "move notes.txt to"
+	h.live.Show(items, cfg)
+	h.waitRow(0, "move notes.txt to")
+	h.key(tcell.KeyDown)
+	h.keys("j")
+	h.noPick()
+	h.waitRow(0, "move notes.txt to")
+}
