@@ -175,8 +175,19 @@ func drawUnified(c render.Canvas, s *core.State, cfg Config, w, startY, h int) {
 
 		if s.PromptMode != "" {
 			queryStyle := tcell.StyleDefault.Foreground(QueryFg).Background(promptBg)
+			// Text longer than the box slides left to keep the cursor in it.
+			offset := min(max(s.PromptCursor-contentW+1, 0), len(s.PromptQuery))
 			if len(s.PromptQuery) > 0 {
-				drawText(c, contentX, y, string(s.PromptQuery), queryStyle, contentW)
+				for i, r := range s.PromptQuery[offset:] {
+					if i >= contentW {
+						break
+					}
+					style := queryStyle
+					if offset+i < s.PromptSelected {
+						style = style.Reverse(true)
+					}
+					c.SetContent(contentX+i, y, r, nil, style)
+				}
 			} else {
 				hint := s.PromptPlaceholder
 				if hint == "" {
@@ -185,7 +196,7 @@ func drawUnified(c render.Canvas, s *core.State, cfg Config, w, startY, h int) {
 				hintStyle := tcell.StyleDefault.Foreground(HintFg).Italic(true).Background(promptBg)
 				drawText(c, contentX, y, hint, hintStyle, contentW)
 			}
-			c.ShowCursor(contentX+s.PromptCursor, y)
+			c.ShowCursor(contentX+s.PromptCursor-offset, y)
 		} else if s.EditMode == "rename" {
 			// Rename mode — show edit buffer as editable text
 			renameStyle := tcell.StyleDefault.Foreground(QueryFg).Background(promptBg)

@@ -331,6 +331,9 @@ func processAction(s *core.State, action string) string {
 // inputMode is the prompt mode an input leaf opens.
 const inputMode = "input"
 
+// askAction is the prompt action of a question from Live.Ask.
+const askAction = "ask"
+
 // pendingInput is the selection waiting on an input leaf's text, or "".
 // Read it before the key that may end the prompt: ending it clears it.
 func pendingInput(s *core.State) string {
@@ -573,8 +576,20 @@ type Live struct {
 type liveEvent struct {
 	update func(*core.State)
 	reload []core.Item
+	show   *liveView
+	ask    *liveAsk
 	abort  *func()
 	close  bool
+}
+
+type liveView struct {
+	items []core.Item
+	cfg   Config
+}
+
+type liveAsk struct {
+	hint, text string
+	selected   int
 }
 
 func (l *Live) post(e liveEvent) { l.screen.PostEvent(tcell.NewEventInterrupt(e)) }
@@ -584,6 +599,21 @@ func (l *Live) Update(f func(*core.State)) { l.post(liveEvent{update: f}) }
 
 // Reload replaces the menu's items, as a fresh start would, keeping the panel.
 func (l *Live) Reload(items []core.Item) { l.post(liveEvent{reload: items}) }
+
+// Show replaces the menu with another list under another Config, keeping the
+// panel. A frontend whose command has several steps moves between them on one
+// screen, so nothing flashes.
+func (l *Live) Show(items []core.Item, cfg Config) {
+	l.post(liveEvent{show: &liveView{items, cfg}})
+}
+
+// Ask takes over the text box for one answer, filled with text and with its
+// first selected runes selected. The answer reaches onPick as an "input" pick,
+// Text holding it; Escape sends a "cancel" pick; Enter on an empty box keeps
+// asking.
+func (l *Live) Ask(hint, text string, selected int) {
+	l.post(liveEvent{ask: &liveAsk{hint, text, selected}})
+}
 
 // Close ends the menu: RunLoop returns once queued calls before it are applied.
 func (l *Live) Close() { l.post(liveEvent{close: true}) }
@@ -627,19 +657,23 @@ func enterStartFolder(s *core.State, cfg Config, searchCols []int) {
 	}
 }
 
-// sessionLoop draws the menu and handles input until onPick returns true.
-// live is nil for a one-shot Run.
-func sessionLoop(screen tcell.Screen, items []core.Item, cfg Config, live *Live, onPick func(Pick) bool) {
-	s, searchCols := newLoopState(items, cfg)
-
-	// Pre-expand to focused directory if specified
+// enterConfiguredFolder opens a new menu where cfg says it starts.
+func enterConfiguredFolder(s *core.State, cfg Config, searchCols []int) {
 	if cfg.FocusedDir != "" && s.Provider != nil {
 		core.ExpandToPath(s, cfg.FocusedDir, cfg, searchCols)
 	}
 	enterStartFolder(s, cfg, searchCols)
+}
+
+// sessionLoop draws the menu and handles input until onPick returns true.
+// live is nil for a one-shot Run.
+func sessionLoop(screen tcell.Screen, items []core.Item, cfg Config, live *Live, onPick func(Pick) bool) {
+	s, searchCols := newLoopState(items, cfg)
+	enterConfiguredFolder(s, cfg, searchCols)
 
 	canvas := &tcellCanvas{screen: screen}
 	var inputItem core.Item // the input leaf whose text the prompt is taking
+	var asking *liveAsk     // the Live.Ask question the prompt is taking
 
 	// Background sync check — runs once if overdue
 	initSyncCheck(s, cfg, func() {
@@ -705,9 +739,21 @@ func sessionLoop(screen tcell.Screen, items []core.Item, cfg Config, live *Live,
 			shift := ev.Modifiers()&tcell.ModShift != 0
 			r := core.HandleUnifiedKeyResult(s, ev.Key(), ev.Rune(), shift, cfg, searchCols)
 			if pick, ok := inputPick(pending, inputItem, r.Action); ok {
+				asking = nil
 				if end(pick) {
 					return
 				}
+				break
+			}
+			if asking != nil && s.PromptMode == "" {
+				if ev.Key() == tcell.KeyEscape {
+					asking = nil
+					if end(Pick{Kind: "cancel"}) {
+						return
+					}
+					break
+				}
+				s.EnterPromptMode(inputMode, askAction, 0, asking.hint)
 				break
 			}
 			// Auto-close inspect view only after a property edit is confirmed
@@ -738,7 +784,18 @@ func sessionLoop(screen tcell.Screen, items []core.Item, cfg Config, live *Live,
 					panel, overruns := s.Panel, s.Overruns
 					s, searchCols = newLoopState(e.reload, cfg)
 					s.Panel, s.Overruns = panel, overruns
-					inputItem = core.Item{}
+					inputItem, asking = core.Item{}, nil
+				case e.show != nil:
+					panel, overruns := s.Panel, s.Overruns
+					cfg = e.show.cfg
+					s, searchCols = newLoopState(e.show.items, cfg)
+					s.Panel, s.Overruns = panel, overruns
+					inputItem, asking = core.Item{}, nil
+					enterConfiguredFolder(s, cfg, searchCols)
+				case e.ask != nil:
+					asking = e.ask
+					s.EnterPromptMode(inputMode, askAction, 0, asking.hint)
+					s.SetPromptText(asking.text, asking.selected)
 				case e.abort != nil:
 					live.abort = *e.abort
 				case e.close:

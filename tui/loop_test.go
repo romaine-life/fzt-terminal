@@ -217,3 +217,66 @@ func TestLoopCloseEndsTheMenu(t *testing.T) {
 		t.Fatal("the menu kept running after Close")
 	}
 }
+
+func TestLoopShowSwapsTheListAndConfigAndKeepsThePanel(t *testing.T) {
+	h := startLoop(t, loopYAML, loopCfg())
+	h.live.Update(func(s *core.State) { s.SetPanel("renamed", core.PanelOK) })
+	h.waitRow(1, "renamed")
+	items, err := core.LoadYAMLFromString("- name: second step\n  action: second\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := loopCfg()
+	cfg.Border, cfg.Title = true, "move take.wav to"
+	h.live.Show(items, cfg)
+	h.waitRow(0, "move take.wav to")
+	h.waitRow(2, "renamed")
+	h.keys("second")
+	h.key(tcell.KeyEnter)
+	if p := h.pick(); p.Kind != "select" || p.Item.Fields[0] != "second step" {
+		t.Fatalf("pick after Show = %+v", p)
+	}
+}
+
+func TestLoopAskReturnsTheEditedText(t *testing.T) {
+	h := startLoop(t, loopYAML, loopCfg())
+	h.live.Ask("new name", "take.wav", 4)
+	h.waitRow(6, "take.wav")
+	h.keys("Verse One")
+	h.waitRow(6, "Verse One.wav")
+	h.key(tcell.KeyEnter)
+	if p := h.pick(); p.Kind != "input" || p.Text != "Verse One.wav" {
+		t.Fatalf("answer = %+v", p)
+	}
+	h.keys("lightson")
+	h.key(tcell.KeyEnter)
+	if p := h.pick(); p.Kind != "select" || p.Item.Fields[0] != "lightson" {
+		t.Fatalf("the menu should work after an answer: %+v", p)
+	}
+}
+
+func TestLoopAskEscapeCancelsAndEmptyEnterKeepsAsking(t *testing.T) {
+	h := startLoop(t, loopYAML, loopCfg())
+	h.live.Ask("new name", "ab", 2)
+	h.waitRow(6, "ab")
+	h.key(tcell.KeyDelete)
+	h.key(tcell.KeyEnter)
+	h.noPick()
+	h.keys("still asking")
+	h.waitRow(6, "still asking")
+	h.key(tcell.KeyEscape)
+	if p := h.pick(); p.Kind != "cancel" {
+		t.Fatalf("Escape in Ask = %+v", p)
+	}
+}
+
+func TestPromptTextLongerThanTheBoxKeepsTheCursorInside(t *testing.T) {
+	h := startLoop(t, loopYAML, loopCfg())
+	name := strings.Repeat("x", 100) + "end"
+	h.live.Ask("new name", name, len(name))
+	h.waitRow(6, "xend")
+	w, _ := h.screen.Size()
+	if x, y, shown := h.screen.GetCursor(); !shown || y != 6 || x >= w {
+		t.Fatalf("cursor at %d,%d shown=%v on a %d-wide screen", x, y, shown, w)
+	}
+}

@@ -41,6 +41,10 @@ Shared frontend behavior imported by every fzt app:
 - **`HandleValidate` / `ReadJWTSecret`** (`credential.go`) -- credential store integration via go-keyring (Windows Credential Manager / KWallet / macOS Keychain). HandleValidate is invoked from the validate command in the `::` core palette.
 - **`sync.go`** (root package) -- API-backed tree sync. Generic `FetchTree(token, treeID)` / `SaveTree(token, treeID, tree, baseVersion)` against `/fzt/tree/:id`. `SyncMenu` / `SaveMenu` are thin wrappers that call the generics with `MenuTreeID(claims.Sub)` (→ `"<sub>-menu"`). YAML serialization to `menu-cache.yaml`. Version number persisted to `.menu-version` for next launch.
 
+### `tui.Live` -- a frontend that stays open
+
+`RunLoop` hands every pick to a frontend with the menu still on screen; `Live` changes the menu from any goroutine. `Update` edits the state, `Reload` swaps the items, `Show` swaps the items and the `Config` (one screen for a command's several steps, so nothing flashes), and `Ask` takes over the text box for one answer, which returns as an `input` pick, with Escape as a `cancel`. fzt-picker's `fzt-files` walks a command through its steps this way.
+
 ### `host/` and `cmd/fztlib/` -- fzt for apps that draw the menu themselves
 
 `host.Session` wraps a headless tree session for a host app (first one: spotify_player's command palette). The host sends key events and gets back a `Frame` of data to draw (`render.VisibleRow`s, `PromptState`, `UIState`), plus a `Result` once the user picks: `select` with the entry's `action`, `prompt` with typed text after the host called `Prompt`, `command` for a host command from the `:` palette, or `cancel`. `:` palette commands run through `frontend.HandleCommandAction`, as in `tui.Run`. `cmd/fztlib` exports it as C functions taking and returning JSON strings (`fzt_open`, `fzt_key`, `fzt_resize`, `fzt_prompt`, `fzt_close`, `fzt_version`, `fzt_free`); `api.go` holds the logic without cgo so `go test` covers it. Releases attach `fzt-windows-amd64.dll` and its `.sha256`; building it needs a MinGW GCC (the Windows runner's is WinLibs).
