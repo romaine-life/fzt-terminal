@@ -1,8 +1,9 @@
 name: Release
 
-# Claude-driven CI, run by hand: dispatch it through the Forgejo API (see
-# CLAUDE.md, CI). A dependency change on main also releases after its PR
-# merges. Downstream consumers are updated manually per repo.
+# Started by strip-owner when a PR it landed needs a release (agent-tools,
+# AHT-69); never by hand. A dependency change on main also releases after its
+# PR merges. strip-owner then starts the bump in each repo whose dispatch.yml
+# names this module.
 
 on:
   workflow_dispatch:

@@ -1,7 +1,7 @@
 name: Dependency Update
 
-# Claude-driven CI, run by hand: dispatch it through the Forgejo API (see
-# CLAUDE.md, CI). Downstream consumers are updated manually per repo.
+# Started by strip-owner when fzt or fzt-frontend releases a change it is
+# delivering (agent-tools, AHT-69); never by hand.
 #
 # Bumps github.com/romaine-life/fzt and fzt-frontend to their latest tags
 # and opens a pull request for the bump that Forgejo merges once main's
