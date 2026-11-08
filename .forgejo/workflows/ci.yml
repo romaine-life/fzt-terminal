@@ -21,6 +21,11 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      - name: gofmt
+        run: |
+          $files = gofmt -l .
+          if ($LASTEXITCODE) { throw "gofmt exited $LASTEXITCODE" }
+          if ($files) { gofmt -d $files; throw "not gofmt-formatted: $($files -join ', ')" }
       - run: go vet ./...
       - run: go test ./...
 

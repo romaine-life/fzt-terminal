@@ -1,0 +1,2 @@
+# gofmt writes LF, and CI's gofmt check reports every CRLF file as unformatted.
+*.go text eol=lf

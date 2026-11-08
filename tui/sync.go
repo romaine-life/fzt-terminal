@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/romaine-life/fzt/core"
 	frontend "github.com/romaine-life/fzt-frontend"
+	"github.com/romaine-life/fzt/core"
 )
 
 const syncInterval = 20 * 60 // 20 minutes in seconds

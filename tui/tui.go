@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"github.com/gdamore/tcell/v2"
+	frontend "github.com/romaine-life/fzt-frontend"
 	"github.com/romaine-life/fzt/core"
 	"github.com/romaine-life/fzt/render"
-	frontend "github.com/romaine-life/fzt-frontend"
 	"golang.org/x/term"
 )
 
@@ -189,11 +189,11 @@ func handleShiftEnter(s *core.State) string {
 		s.InspectItemIdxs = nil
 		for _, p := range props {
 			propItem := core.Item{
-				Fields:     []string{p.key, p.val},
-				Depth:      item.Depth + 1,
-				ParentIdx:  row.ItemIdx,
-				IsProperty: true,
-				PropertyOf: row.ItemIdx,
+				Fields:      []string{p.key, p.val},
+				Depth:       item.Depth + 1,
+				ParentIdx:   row.ItemIdx,
+				IsProperty:  true,
+				PropertyOf:  row.ItemIdx,
 				PropertyKey: p.key,
 			}
 			propIdx := len(ctx.AllItems)
@@ -848,8 +848,6 @@ func sessionLoop(screen tcell.Screen, items []core.Item, cfg Config, live *Live,
 		}
 	}
 }
-
-
 
 // Simulate runs a headless simulation: renders the initial frame, then one frame
 // per character of the query. Returns all frames as text snapshots.
@@ -1567,7 +1565,6 @@ func drawBorderSides(c render.Canvas, w, topY, bottomY int) {
 		c.SetContent(w-1, y, '\u2502', nil, style)
 	}
 }
-
 
 // RunUpdate downloads the latest release of the consumer binary from GitHub
 // if a newer version exists. Reads State.UpdateRepo / UpdateAssetPrefix /
