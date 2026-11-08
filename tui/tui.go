@@ -1422,7 +1422,7 @@ func drawHighlightedField(c render.Canvas, x, y int, field string, styledRunes [
 }
 
 func drawText(c render.Canvas, x, y int, text string, style tcell.Style, maxW int) {
-	for i, r := range text {
+	for i, r := range []rune(text) {
 		if i >= maxW {
 			break
 		}

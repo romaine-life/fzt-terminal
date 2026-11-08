@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -327,4 +328,41 @@ func TestSteppedLetterNavigationLeavesTheTitleAlone(t *testing.T) {
 	h.keys("j")
 	h.noPick()
 	h.waitRow(0, "move notes.txt to")
+}
+
+const deepYAML = `
+- name: workspace
+  children:
+    - name: fzt-picker
+      children:
+        - name: fp-1-fzt-files
+          children:
+            - name: qa
+              children:
+                - name: dest
+                  children:
+                    - name: take.wav
+                      action: take
+`
+
+// A path too long for the prompt box is cut from the left behind an
+// ellipsis, and the query still follows it after one space (FT-2).
+func TestScopedShortenedPathKeepsItsGap(t *testing.T) {
+	h := startLoop(t, loopYAML, loopCfg())
+	items, err := core.LoadYAMLFromString(deepYAML)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := loopCfg()
+	cfg.ScopedView = true
+	h.live.Show(items, cfg)
+	for _, name := range []string{"workspace", "fzt-picker", "fp-1-fzt-files", "qa", "dest"} {
+		h.keys(name)
+		h.waitRow(6, name)
+		h.keys(" ")
+	}
+	h.waitRow(8, "take.wav")
+	h.keys("qa")
+	sep := string(filepath.Separator)
+	h.waitRow(6, " …"+strings.Join([]string{"ker", "fp-1-fzt-files", "qa", "dest", " qa "}, sep))
 }
