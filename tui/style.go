@@ -51,10 +51,11 @@ func ColorToRGB(c tcell.Color) (r, g, b uint8) {
 	return uint8(cr), uint8(cg), uint8(cb)
 }
 
-// Font configuration — shared defaults for GDI and terminal renderers.
+// Font for GDI renderers (fzt-picker's file dialog). GDI does no font fallback, so the face
+// must be installed on every PC that draws it, named by its legacy (GDI) family name.
 const (
-	DefaultFontName = "FiraCode Nerd Font Mono"
-	DefaultFontSize = 12 // points (matches Windows Terminal default)
+	DefaultFontName = "CaskaydiaMono NF" // the Nerd Font home-sync installs on every home PC
+	DefaultFontSize = 12                 // points (matches Windows Terminal default)
 )
 
 // Semantic color constants for all fzt renderers.
