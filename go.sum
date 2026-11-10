@@ -34,8 +34,8 @@ github.com/romaine-life/auth v0.1.20 h1:vlXPoNgwZbfrxNi+pBl1cXilNjzrT0Qjqb3h3UV+
 github.com/romaine-life/auth v0.1.20/go.mod h1:Z7QmAx+OASAclFXQYOhSB7x2a6qulKsVGj/yyMdv3kM=
 github.com/romaine-life/fzt v0.2.99 h1:BPkIWBMdMZkGNZViRsva2cbaiP5zT7vkwJK9ZW00nyE=
 github.com/romaine-life/fzt v0.2.99/go.mod h1:+/4sSnR4iFd8ADQWCwJublmXt9lPzlvweFJJKEbTxLw=
-github.com/romaine-life/fzt-frontend v0.1.54 h1:nw9NzI5uocPrskMpRD3LM2oMQFLDqmixJYBe/GmDDA8=
-github.com/romaine-life/fzt-frontend v0.1.54/go.mod h1:osW8b5JwG9Kt5CiM7mg2k51rETk5lkqbfrO/Nk0OFeE=
+github.com/romaine-life/fzt-frontend v0.1.55 h1:cQqYUnykIB9GfO0BP25gkpPNrYLXYuEY4cy415tJC2c=
+github.com/romaine-life/fzt-frontend v0.1.55/go.mod h1:osW8b5JwG9Kt5CiM7mg2k51rETk5lkqbfrO/Nk0OFeE=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
 github.com/stretchr/objx v0.3.0 h1:NGXK3lHquSN08v5vWalVI/L8XU9hdzE/G6xsrze47As=
 github.com/stretchr/objx v0.3.0/go.mod h1:qt09Ya8vawLte6SNmTgCsAVtYtaKzEcn8ATUoHMkEqE=
