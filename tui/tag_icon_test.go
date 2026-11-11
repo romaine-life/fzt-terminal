@@ -39,3 +39,28 @@ func TestSearchBarIconShowsTagMode(t *testing.T) {
 		}
 	}
 }
+
+// Inside a TagDefault folder the search bar shows the tag icon with tag mode
+// off, and backing out to the root shows the magnifying glass again (TMUX-196:
+// Ctrl+B opens the at menu inside its tmux folder, which searches by tag).
+func TestSearchBarIconShowsTagDefaultFolder(t *testing.T) {
+	items, err := core.LoadYAMLFromString(`
+- name: tmux
+  children:
+    - name: new-session
+      tags: [session, new]
+- name: lights
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	items[0].TagDefault = true
+	cfg := Config{Layout: "reverse", Tiered: true, TreeMode: true, DepthPenalty: 5, HidePalette: true, StartFolder: []string{"tmux"}}
+	frames := Simulate(items, cfg, "{esc}", 60, 10, false)
+	if p := promptLine(t, frames[0].Content); !strings.Contains(p, "") || strings.Contains(p, "") {
+		t.Fatalf("inside the tmux folder: search box = %q, want the tag icon\n%s", p, FormatFrames(frames))
+	}
+	if p := promptLine(t, frames[len(frames)-1].Content); !strings.Contains(p, "") || strings.Contains(p, "") {
+		t.Fatalf("back at the root: search box = %q, want the magnifying glass\n%s", p, FormatFrames(frames))
+	}
+}

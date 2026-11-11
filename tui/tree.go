@@ -107,7 +107,7 @@ func drawUnified(c render.Canvas, s *core.State, cfg Config, w, startY, h int) {
 		promptIconStyle = tcell.StyleDefault.Foreground(NavModeFg).Background(promptBg)
 	} else {
 		promptIcon = '\uF002' //
-		if s.TagMode {
+		if core.TagSearchOn(s) {
 			promptIcon = '\uF02B' //  tag search
 		}
 		promptIconStyle = tcell.StyleDefault.Foreground(SearchModeFg).Bold(true).Background(promptBg)
