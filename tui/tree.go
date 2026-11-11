@@ -563,12 +563,14 @@ func drawTagPrompt(c render.Canvas, ctx *core.TreeContext, x, y, w int, bg tcell
 	}
 }
 
-// drawTags draws an item's tags in the description column, the ones the
-// search resolved to highlighted.
+// drawTags draws an item's tags in the description column, every tag a
+// search word matched highlighted.
 func drawTags(c render.Canvas, x, y int, item core.Item, terms []core.TagTerm, hasBg bool, maxW int) {
 	matched := map[string]bool{}
 	for _, t := range terms {
-		matched[t.Tag] = true
+		for _, tag := range t.Tags {
+			matched[tag] = true
+		}
 	}
 	end := x + maxW
 	for i, tag := range item.Tags {
