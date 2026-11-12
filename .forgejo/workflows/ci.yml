@@ -49,9 +49,16 @@ jobs:
           if (-not (Get-Command gcc -ErrorAction SilentlyContinue)) { throw 'no gcc on the runner (WinLibs, upstairspc winget)' }
           gcc --version | Select-Object -First 1
           go build -buildmode=c-shared -o fzt-windows-amd64.dll ./cmd/fztlib
-      - uses: https://data.forgejo.org/forgejo/upload-artifact@v4
+      - uses: forgejo/upload-artifact@v4
         with:
           name: fzt-windows-amd64-dll
           path: |
             fzt-windows-amd64.dll
             fzt-windows-amd64.h
+
+  # The fetch check reads only the repo, and runs where Python is (FORGEJO-28).
+  fetches:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: romaine-life/pipeline-templates/actions/check-fetches@main
