@@ -37,6 +37,32 @@ jobs:
           # the bump branch is pushed with PIPELINE_DISPATCH_TOKEN
           persist-credentials: false
 
+      # One bump open at a time (AGENT-242). An open one was branched from an older main:
+      # once another lands it conflicts, and Forgejo never merges it. This run takes the
+      # modules at their latest tags, so it carries what an open one carries; those are
+      # closed first, and this one branches from main as it stands after them.
+      - name: Close the bumps this one supersedes
+        env:
+          T: ${{ secrets.PIPELINE_DISPATCH_TOKEN }}
+          API: ${{ github.server_url }}/api/v1/repos/${{ github.repository }}
+          REMOTE: ${{ github.server_url }}/${{ github.repository }}.git
+          BASE: ${{ github.ref_name }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_number }}
+        run: |
+          api() { printf 'header = "Authorization: token %s"\n' "$T" | curl --config - -sS --fail-with-body -H 'Content-Type: application/json' "$@"; }
+          open=$(api "$API/pulls?state=open&limit=50" | jq -r '.[] | select(.head.ref | startswith("FORGEJO-3-deps/")) | "\(.number) \(.head.ref)"')
+          while read -r n ref; do
+            [ -n "$n" ] || continue
+            api -o /dev/null -X POST -d "$(jq -n --arg b "Superseded by $RUN_URL, which takes the modules at their latest tags and so carries this (AGENT-242)." '{body: $b}')" "$API/issues/$n/comments"
+            api -o /dev/null -X PATCH -d '{"state":"closed"}' "$API/pulls/$n"
+            api -o /dev/null -X DELETE "$API/branches/$ref"
+            echo "Closed #$n ($ref)"
+          done <<< "$open"
+          git -c credential.helper= \
+            -c 'credential.helper=!f() { echo username=x-access-token; printf "password=%s\n" "$T"; }; f' \
+            fetch -q "$REMOTE" "$BASE"
+          git reset -q --hard FETCH_HEAD
+
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
