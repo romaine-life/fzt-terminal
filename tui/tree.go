@@ -285,13 +285,13 @@ func drawTree(c render.Canvas, s *core.State, cfg Config, w, startY, h int) {
 		topMatchIdx = core.FindInAll(ctx.AllItems, ctx.Filtered[0])
 	}
 
-	// A row a search or an opened folder picked sits revealMargin rows down,
-	// with what follows it below, even when that leaves the end of the list
-	// empty; a list that fits is not scrolled.
+	// A row a search or an opened folder picked (TreeRevealRow) sits
+	// revealMargin rows down, with what follows it below, even when that
+	// leaves the end of the list empty; a list that fits is not scrolled.
 	if ctx.TreeReveal && ctx.TreeCursor >= 0 {
 		ctx.TreeOffset = 0
 		if len(visible) > treeSpace {
-			ctx.TreeOffset = max(ctx.TreeCursor-revealMargin, 0)
+			ctx.TreeOffset = max(ctx.TreeRevealRow-revealMargin, 0)
 		}
 	}
 	ctx.TreeReveal = false
