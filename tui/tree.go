@@ -21,6 +21,15 @@ const revealMargin = 2
 // Within this function, ctx.NavMode affects ONLY the prompt icon.
 // All other rendering is mode-independent.
 func drawUnified(c render.Canvas, s *core.State, cfg Config, w, startY, h int) {
+	if core.KeyPopupOpen(s) {
+		drawKeyPopup(c, s, cfg, w, startY, h, func(c render.Canvas) { drawUnified(c, s, cfg, w, startY, h) })
+		return
+	}
+	drawTree(c, s, cfg, w, startY, h)
+}
+
+// drawTree draws the tree view: the border, the prompt bar and the rows.
+func drawTree(c render.Canvas, s *core.State, cfg Config, w, startY, h int) {
 	ctx := s.TopCtx()
 
 	borderOffset := 0
@@ -426,10 +435,30 @@ func drawTreeRow(c render.Canvas, row core.TreeRow, isSelected, isTopMatch bool,
 			descStyle = descStyle.Background(SelectionBg)
 		}
 		remaining := w - x - borderOffset
+		if len(row.Item.Keys) > 0 {
+			remaining = drawKeycaps(c, row.Item.Keys, w-borderOffset, y) - x - 2
+		}
 		if remaining > 0 {
 			drawText(c, x, y, desc, descStyle, remaining)
 		}
 	}
+}
+
+// drawKeycaps draws keys right-aligned to end before column right, each a
+// cap of its own, and returns the column the first cap starts at.
+func drawKeycaps(c render.Canvas, keys []string, right, y int) int {
+	width := 0
+	for _, k := range keys {
+		width += len([]rune(k)) + 3 // the cap's padding and the gap after it
+	}
+	x := right - width
+	start := x
+	for _, k := range keys {
+		cap := " " + k + " "
+		drawText(c, x, y, cap, KeycapStyle, len([]rune(cap)))
+		x += len([]rune(cap)) + 1
+	}
+	return start
 }
 
 // drawHighlightedText draws text with certain character indices highlighted in green.

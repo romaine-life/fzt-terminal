@@ -61,7 +61,7 @@ Full-screen TUI rendering via tcell. Key files:
 
 | File | Purpose |
 |------|---------|
-| `tui.go` | Entry points: `Run` (full-screen), `NewSession`/`NewTreeSession` (headless), `Simulate` (testing). Layout functions: `drawDefault`, `drawReverse`, `drawUnified` (tree mode). `drawBorderTopWithTitle` renders the title bar with titleStyleHint (0=default cyan, 1=green success, 2=red error, 3=neutral slate, 4=nav-mode NavModeFg, 5=search-mode SearchModeFg) and syncIcon parameters. |
+| `tui.go` | Entry points: `Run` (full-screen), `NewSession`/`NewTreeSession` (headless), `Simulate` (testing). Layout functions: `drawDefault`, `drawReverse`, `drawUnified` (tree mode; `drawTree` draws the frame, `popup.go` the `/` pop-up over it). `drawBorderTopWithTitle` renders the title bar with titleStyleHint (0=default cyan, 1=green success, 2=red error, 3=neutral slate, 4=nav-mode NavModeFg, 5=search-mode SearchModeFg) and syncIcon parameters. |
 | `tree.go` | Unified tree renderer: `drawUnified` draws prompt bar + tree as a single navigation surface. `drawTreeRow` renders individual rows with icons, indentation, match highlighting. Headers start at borderOffset+5 to match tree row layout (2 selection + 2 icon + 1 buffer). Dynamic effectiveNameCol computed from visible items. |
 | `sync.go` | Background sync check: `initSyncCheck`, `checkBookmarkStaleness`. 1-second ticker goroutine posts `tcell.EventInterrupt` for live redraws. 20-minute sync interval with `.last-sync-check` file. SyncIcon rendering (yellow icon in top-right corner). |
 | `style.go` | Semantic color constants (Catppuccin Mocha palette mapped to tcell colors). CSS equivalents documented in comments. Exports `PaletteRGB` (tcell color → RGB map), `ColorToRGB()` (any tcell color to RGB), `BaseBgRGB`/`TextFgRGB` (default bg/fg), `DefaultFontName`/`DefaultFontSize` (the GDI font, `CaskaydiaMono NF`), `NavModeFg`/`SearchModeFg` (mode-indicator colors). Used by GDI renderers (picker) to stay aligned with the terminal palette. |
@@ -153,7 +153,7 @@ fzt has two primary modes and several edit modes. The primary modes are mutually
 
 **Search mode** (default). Typing fills the query; Enter commits the top match or scopes into the top folder; arrows or backtick enter normal mode. Prompt icon: magnifying glass (`\uF002`, yellow).
 
-**Normal mode** (cursor on tree). Typing is no longer input; lowercase `hjkl` navigates; `/` or Backspace return to search. Prompt icon: arrow (`\uF0A9`, teal).
+**Normal mode** (cursor on tree). Typing is no longer input; lowercase `hjkl` navigates; Backspace returns to search (the `/` pop-up's "search" row returns with the query kept). Prompt icon: arrow (`\uF0A9`, teal).
 
 **Edit modes** (`State.EditMode` non-empty). Entered from palette commands (`rename`, `add-after`, `add-folder`, `delete`, `inspect`). Under rename or property-edit, every printable key goes to `EditBuffer` via `handleRenameKey`; Enter confirms, Escape cancels. Under the other edit modes, the user navigates to a target and confirms with `Shift+Enter`.
 
@@ -165,14 +165,14 @@ Legend: ✓ = handled, ▸ = has side effect, — = unbound / silent, ↩ = tran
 
 | key | search | normal | rename / property-edit |
 |---|---|---|---|
-| printable rune (incl. capital, symbol) | ✓ append to query | — silent (except `h`/`j`/`k`/`l` / `/`) | ✓ append to `EditBuffer` |
+| printable rune (incl. capital, symbol) | ✓ append to query (except `/`) | — silent (except `h`/`j`/`k`/`l`) | ✓ append to `EditBuffer` |
 | `h`/`j`/`k`/`l` (lowercase) | ✓ append to query | ✓ nav left/down/up/right | ✓ append to buffer |
-| `/` | ✓ activate search from root (no-op if already active) | ↩ return to search, query preserved | ✓ append `/` to buffer |
+| `/` | ↩ open the `/` pop-up | ↩ open the `/` pop-up | ✓ append `/` to buffer |
 | `` ` `` (backtick) | ↩ enter normal mode | — | ✓ append backtick to buffer |
 | `:` | ✓ append `:` to query (matches `:` folder at root via fuzzy) | — | ✓ append to buffer |
 | Space | ▸ on folder at cursor: push scope; else append to query | ▸ push scope on cursor's folder | ✓ append space to buffer |
 | Arrow keys | ↩ enter normal mode + move cursor | ✓ move cursor | — |
-| Tab | ✓ autocomplete top match (folder: also push scope) | — | — |
+| Tab / Shift+Tab | ✓ complete to the top match; once locked in, step through the ranking from what was typed (a folder picker's Tab goes into a folder) | — | — |
 | Enter | ✓ select top match or scoped leaf; push scope on folder | ✓ same | ✓ confirm edit |
 | Shift+Enter | ✓ universal confirm-select (commits cursor's item, no scope push on folder) | ✓ same | ✓ confirm edit mode action (add / rename / delete / inspect) |
 | Backspace | ✓ delete last query char; on empty query, pop scope | ↩ chop last query char + return to search | ✓ delete last char of buffer |
@@ -191,7 +191,7 @@ Escape performs progressive unwind. Each press steps back one layer; reaching ro
 5. **Context stack > 1** (e.g. scoped into `:` palette as a pushed context) → pop one context.
 6. **At root with empty query, nothing to unwind** → `s.Cancelled = true`, picker returns "cancel".
 
-Shift+Backspace collapses the query-clear and scope-pop steps into a single gesture — resets to home (pop all scope, clear query, clear filtered). Preserves the active edit mode when one is set, so the user doesn't lose an in-progress add/rename while re-orienting.
+Shift+Backspace collapses the query-clear and scope-pop steps into a single gesture — resets to home (`core.GoHome`: pop all scope, clear query, clear filtered). Preserves the active edit mode when one is set, so the user doesn't lose an in-progress add/rename while re-orienting.
 
 Backspace on an empty query at scope > 1 does step 4 (pop scope) without needing Escape. Backspace on an empty query at root with context stack > 1 pops a context.
 
@@ -219,11 +219,9 @@ All Ctrl bindings have been removed from the engine and the picker. Replacements
 | Ctrl+U (clear query) | Escape twice on non-empty query (first press exits to normal mode, second clears), or Shift+Backspace |
 | Ctrl+W (delete word) | Backspace repeatedly, or Escape-Escape / Shift+Backspace to clear and retype |
 
-### Shortcut manifest
+### The `/` pop-up
 
-The canonical list of key → action mappings lives in `fzt-frontend/command.go`'s `helpEntries()` function, rendered into the `:help/` palette subfolder at runtime. Every fzt consumer gets the same list; users can scope into `:help/` (or fuzzy-match `help` from root) to browse every binding with its long-form description. Each entry carries `Action = "help-entry"`, which `HandleCommandAction` maps to a title-bar pulse so pressing Enter on a help row echoes the description.
-
-This doc is the narrative reference. The palette is the runtime reference. A visual state-transition diagram is tracked by [fzt#10](https://github.com/romaine-life/fzt/issues/10) and will live under `diagrams.romaine.life/fzt/keyboard` when built.
+`/` opens fzt's key pop-up (`core.OpenKeyPopup`; fzt's CLAUDE.md has the contract): the actions the keys do at that moment, each a verb, a description and its keys. `tui/popup.go` draws it from `drawUnified` and `renderFrame` alike: the frame underneath is drawn into a `MemScreen` and copied faded (`UnderPopupFg`), then the pop-up is drawn as an fzt frame of its own (`drawTree` through an `inset` canvas) in the box `core.KeyPopupBox` places, titled with what it acts on. Rows with `Item.Keys` end in keycaps (`drawKeycaps`, `KeycapStyle`). Clicks map through the same box in core. This is the runtime reference for the keys; the `:` palette's old `help` table is gone.
 
 New code MUST NOT introduce any Ctrl, Alt, or Meta binding.
 
@@ -273,6 +271,10 @@ Menu CRUD used to live in `packages/routes/` here (`@nelsong6/fzt-terminal-route
 - **Internalized shell commands**: load-*, unload, sync handled internally in HandleCommandAction -- no PowerShell function dependencies. load auto-syncs and exits; unload clears cache and exits.
 
 ## Change log
+
+### 2026-11-11
+
+- `/` opens fzt's key pop-up, drawn as its own fzt over the faded menu, rows ending in keycaps. Tab steps through matches once locked in. Shift+Backspace runs `core.GoHome`, which the pop-up's "go to top" row shares. OpenProject FZT2-4.
 
 ### 2026-11-01
 

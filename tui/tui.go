@@ -22,7 +22,7 @@ import (
 // Returns (action, true) if a shortcut was detected (even if unknown),
 // or ("", false) to fall through to normal input handling.
 // HJKL are reserved for vim nav and handled by the engine.
-func handleShortcut(s *core.State, ev *tcell.EventKey) (string, bool) {
+func handleShortcut(s *core.State, ev *tcell.EventKey, cfg Config, searchCols []int) (string, bool) {
 	// Shift+Enter — in action/edit modes this triggers TUI-level confirmation
 	// (add-after, add-folder, delete, inspect, rename-prop, property-edit).
 	// Outside those modes, fall through so core.HandleUnifiedKey treats it as
@@ -40,25 +40,7 @@ func handleShortcut(s *core.State, ev *tcell.EventKey) (string, bool) {
 		if s.InspectTargetIdx >= 0 {
 			cleanupInspect(s)
 		}
-		// Pop all contexts back to primary
-		for len(s.Contexts) > 1 {
-			s.PopContext()
-		}
-		ctx := s.TopCtx()
-		ctx.Scope = []core.ScopeLevel{{ParentIdx: -1}}
-		ctx.Query = nil
-		ctx.Cursor = 0
-		ctx.TreeCursor = -1
-		ctx.TreeOffset = 0
-		ctx.SearchActive = false
-		ctx.NavMode = false
-		ctx.Filtered = nil
-		ctx.QueryExpanded = make(map[int]bool)
-		ctx.TreeExpanded = make(map[int]bool)
-		// Only show home indicator if no edit mode is active
-		if s.EditMode == "" {
-			s.SetTitle("\u2302", 1)
-		}
+		core.GoHome(s, cfg, searchCols)
 		return "", true
 	}
 
@@ -439,6 +421,10 @@ func renderFrameDrawFunc(c render.Canvas, s *core.State, cfg core.Config) {
 
 func renderFrame(c render.Canvas, s *core.State, cfg Config) {
 	w, h := c.Size()
+	if core.KeyPopupOpen(s) {
+		drawKeyPopup(c, s, cfg, w, 0, h, func(c render.Canvas) { renderFrame(c, s, cfg) })
+		return
+	}
 	if cfg.Layout == "reverse" {
 		drawReverse(c, s, cfg, w, 0, h)
 	} else {
@@ -731,13 +717,13 @@ func sessionLoop(screen tcell.Screen, items []core.Item, cfg Config, live *Live,
 				break
 			}
 			// Shortcuts: Shift+letter (capitals) or Alt+letter bypass search input
-			if action, handled := handleShortcut(s, ev); handled {
+			if action, handled := handleShortcut(s, ev, cfg, searchCols); handled {
 				if pick, ok := endingPick(action, core.ActionResult{}); ok && end(pick) {
 					return
 				}
 				break
 			}
-			if stepped && ev.Key() == tcell.KeyEscape && s.PromptMode == "" {
+			if stepped && ev.Key() == tcell.KeyEscape && s.PromptMode == "" && !core.KeyPopupOpen(s) {
 				if len(s.TopCtx().Query) > 0 {
 					clearSearch(s)
 				} else if end(Pick{Kind: "cancel"}) {

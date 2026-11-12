@@ -105,4 +105,10 @@ var (
 	TitleNeutralFg  = tcell.ColorLightGray // "registered but no action" — distinct from success
 	SyncIconFg      = tcell.ColorYellow
 	SyncFailedFg    = tcell.ColorRed // the background check couldn't sign in or reach the menu
+	// The menu under the `/` pop-up, faded so the pop-up reads as on top.
+	UnderPopupFg = tcell.NewRGBColor(0x58, 0x5b, 0x70)
 )
+
+// KeycapStyle draws a key in the `/` pop-up: light text on the prompt
+// bar's grey, like a key on a keyboard.
+var KeycapStyle = tcell.StyleDefault.Foreground(tcell.ColorLightGray).Background(PromptSurfaceBg)
