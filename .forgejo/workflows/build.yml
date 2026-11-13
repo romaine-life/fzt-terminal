@@ -1,16 +1,13 @@
 name: Build
 
-# Called by the release templates AFTER a release is cut. Builds the `fzt`
-# picker CLI (cmd/fzt) for three OSes, and the fzt library (cmd/fztlib) as a
-# Windows DLL for apps that load fzt in-process, and uploads them to that
-# release. The tag is passed as an input, so the build checks out exactly what
-# was released. Every pull request runs the picker builds, signing included,
-# without the upload, so a release is never their first run.
+# Dispatched by the release template (release.yml) AFTER a release is cut.
+# Builds the `fzt` picker CLI (cmd/fzt) for three OSes, and the fzt library
+# (cmd/fztlib) as a Windows DLL for apps that load fzt in-process, and uploads
+# them to that release. The tag is passed as an input, so the build checks out
+# exactly what was released. CI (ci.yml) runs the same builds, signing
+# included, on every change, so a release is never their first run.
 
 on:
-  pull_request:
-  push:
-    branches: [main]
   workflow_dispatch:
     inputs:
       tag:
@@ -25,7 +22,7 @@ jobs:
   windows:
     runs-on: windows-latest
     outputs:
-      release-tag: ${{ steps.upload.outputs.tag || 'validation-only' }}
+      release-tag: ${{ steps.upload.outputs.tag }}
     defaults:
       run:
         shell: pwsh -NoLogo -NoProfile -NonInteractive -Command "$ErrorActionPreference = 'Stop'; . ([scriptblock]::Create([IO.File]::ReadAllText('{0}'))); if (Test-Path variable:LASTEXITCODE) { exit $LASTEXITCODE }"
@@ -85,7 +82,6 @@ jobs:
 
       - name: Upload signed Windows assets
         id: upload
-        if: github.event_name == 'workflow_dispatch'
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -142,7 +138,6 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
       - name: Upload Unix assets
-        if: github.event_name == 'workflow_dispatch'
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -169,4 +164,4 @@ jobs:
     uses: romaine-life/pipeline-templates/.forgejo/workflows/home-sync.yml@main
     secrets: inherit
     with:
-      release-tag: ${{ needs.windows.outputs.release-tag != 'validation-only' && needs.windows.outputs.release-tag || '' }}
+      release-tag: ${{ needs.windows.outputs.release-tag }}
