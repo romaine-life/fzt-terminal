@@ -74,26 +74,7 @@ func drawTree(c render.Canvas, s *core.State, cfg Config, w, startY, h int) {
 	hasQuery := len(ctx.Query) > 0
 	visible := core.TreeVisibleItems(s)
 
-	// Compute effective name column width from visible items.
-	// Each row needs: indent + name + gap. We find the max absolute width
-	// (indent + max(nameLen+1, NameColWidth+ColGap-indent)) so all descriptions align.
-	effectiveNameCol := ctx.NameColWidth + ctx.ColGap
-	if effectiveNameCol < 12 {
-		effectiveNameCol = 12 // minimum so headers don't collapse
-	}
-	for _, row := range visible {
-		indent := rowIndent(row, cfg)
-		nameW := ctx.NameColWidth + ctx.ColGap - indent
-		if len(row.Item.Fields) > 0 {
-			nameLen := len([]rune(row.Item.Fields[0])) + 1
-			if nameLen > nameW {
-				nameW = nameLen
-			}
-		}
-		if nameW+indent > effectiveNameCol {
-			effectiveNameCol = nameW + indent
-		}
-	}
+	effectiveNameCol := descColumn(ctx, cfg, visible)
 
 	// Prompt bar -- bordered input field, the primary UI element
 	promptBg := PromptSurfaceBg
@@ -328,6 +309,37 @@ func drawTree(c render.Canvas, s *core.State, cfg Config, w, startY, h int) {
 		drawBorderBottom(c, w, startY+h-1)
 		drawBorderSides(c, w, startY, startY+h-1)
 	}
+}
+
+// descColumn is where the description column starts, as a row's indent plus
+// its name plus the gap, counted from where the indent begins. Once a
+// folder is entered it fits that folder's entries; before that it fits the
+// selected row, or every row when none is selected. A row whose name runs
+// past it pushes only its own description right (drawTreeRow).
+func descColumn(ctx *core.TreeContext, cfg Config, visible []core.TreeRow) int {
+	need := func(row core.TreeRow) int {
+		n := 0
+		if len(row.Item.Fields) > 0 {
+			n = len([]rune(row.Item.Fields[0]))
+		}
+		return rowIndent(row, cfg) + n + ctx.ColGap
+	}
+	col := 12 // so the headers don't collapse
+	if folder := ctx.Scope[len(ctx.Scope)-1].ParentIdx; folder >= 0 && folder < len(ctx.AllItems) {
+		for _, idx := range ctx.AllItems[folder].Children {
+			if idx < len(ctx.AllItems) && !ctx.AllItems[idx].Hidden {
+				col = max(col, need(core.TreeRow{Item: ctx.AllItems[idx], ItemIdx: idx}))
+			}
+		}
+		return col
+	}
+	if ctx.TreeCursor >= 0 && ctx.TreeCursor < len(visible) {
+		return max(col, need(visible[ctx.TreeCursor]))
+	}
+	for _, row := range visible {
+		col = max(col, need(row))
+	}
+	return col
 }
 
 // drawTreeRow renders a single tree item row.
