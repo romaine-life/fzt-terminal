@@ -416,11 +416,11 @@ func drawTreeRow(c render.Canvas, row core.TreeRow, isSelected, isTopMatch bool,
 	}
 
 	// Highlight matched characters for top match
-	if isTopMatch && len(row.Item.MatchIndices) > 0 && len(row.Item.MatchIndices[0]) > 0 {
-		drawHighlightedText(c, x, y, name, nameStyle, nameWidth, row.Item.MatchIndices[0], hasBg)
-	} else {
-		drawText(c, x, y, name, nameStyle, nameWidth)
+	var nameMatches []int
+	if isTopMatch && len(row.Item.MatchIndices) > 0 {
+		nameMatches = row.Item.MatchIndices[0]
 	}
+	drawRowText(c, x, y, name, styledField(row.Item, 0), nameStyle, nameWidth, nameMatches, hasBg)
 	x += nameWidth
 
 	// Description, or the row's tags during a tag search
@@ -439,7 +439,7 @@ func drawTreeRow(c render.Canvas, row core.TreeRow, isSelected, isTopMatch bool,
 			remaining = drawKeycaps(c, row.Item.Keys, w-borderOffset, y) - x - 2
 		}
 		if remaining > 0 {
-			drawText(c, x, y, desc, descStyle, remaining)
+			drawRowText(c, x, y, desc, styledField(row.Item, 1), descStyle, remaining, nil, hasBg)
 		}
 	}
 }
@@ -462,7 +462,11 @@ func drawKeycaps(c render.Canvas, keys []string, right, y int) int {
 }
 
 // drawHighlightedText draws text with certain character indices highlighted in green.
-func drawHighlightedText(c render.Canvas, x, y int, text string, baseStyle tcell.Style, maxW int, matchIndices []int, hasBg bool) {
+// drawRowText draws a row's field: in the field's own colours where its input
+// gave some (styled, from ANSI codes, such as a tmux window's Claude state),
+// over the row's style and keeping its background, with the characters a
+// search matched highlighted over everything.
+func drawRowText(c render.Canvas, x, y int, text string, styled []core.StyledRune, baseStyle tcell.Style, maxW int, matchIndices []int, hasBg bool) {
 	runes := []rune(text)
 	matchSet := make(map[int]bool, len(matchIndices))
 	for _, idx := range matchIndices {
@@ -474,6 +478,14 @@ func drawHighlightedText(c render.Canvas, x, y int, text string, baseStyle tcell
 			break
 		}
 		style := baseStyle
+		if i < len(styled) {
+			fg, _, attrs := styled[i].Style.Decompose()
+			if fg != tcell.ColorDefault {
+				style = style.Foreground(fg)
+			}
+			_, _, baseAttrs := baseStyle.Decompose()
+			style = style.Attributes(baseAttrs | attrs)
+		}
 		if matchSet[i] {
 			style = tcell.StyleDefault.Foreground(HighlightFg).Bold(true)
 			if hasBg {
@@ -482,6 +494,15 @@ func drawHighlightedText(c render.Canvas, x, y int, text string, baseStyle tcell
 		}
 		c.SetContent(x+i, y, r, nil, style)
 	}
+}
+
+// styledField is an item's field i in its own colours, or nil if its input
+// gave none.
+func styledField(item core.Item, i int) []core.StyledRune {
+	if i < len(item.StyledFields) {
+		return item.StyledFields[i]
+	}
+	return nil
 }
 
 // rowIndent is a row's indentation in cells. The scoped view lists one
