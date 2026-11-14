@@ -24,6 +24,7 @@ func open(t *testing.T) *Session {
 		Width:    80,
 		Height:   20,
 		Frontend: "spt",
+		Version:  "v0.25.1-126",
 		Commands: []Command{{Name: "reload menu", Description: "Read the menu file again", Action: "reload-menu"}},
 	})
 	if err != nil {
@@ -54,6 +55,13 @@ func press(t *testing.T, s *Session, key string) Frame {
 		t.Fatal(err)
 	}
 	return f
+}
+
+func TestVersionEntryNamesTheHostsVersion(t *testing.T) {
+	got := open(t).sess.State().VersionRegistry
+	if len(got) == 0 || got[0] != "spt v0.25.1-126" {
+		t.Fatalf("version registry = %q", got)
+	}
 }
 
 func TestOpenShowsTheTopLevel(t *testing.T) {

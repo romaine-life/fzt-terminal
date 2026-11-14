@@ -21,6 +21,8 @@ type Options struct {
 	Height int    `json:"height"`
 	// Name shown for the host in the `:` palette
 	Frontend string `json:"frontend"`
+	// The host's version, shown beside its name by the palette's version entry
+	Version string `json:"version"`
 	// The host's own commands, listed first in the `:` palette
 	Commands []Command `json:"commands"`
 }
@@ -90,6 +92,7 @@ func Open(menu string, opts Options) (*Session, error) {
 		DepthPenalty:     5,
 		Title:            opts.Title,
 		FrontendName:     opts.Frontend,
+		FrontendVersion:  opts.Version,
 		FrontendCommands: commands,
 		EnvTags:          []string{"host"},
 	}
