@@ -312,10 +312,12 @@ func drawTree(c render.Canvas, s *core.State, cfg Config, w, startY, h int) {
 }
 
 // descColumn is where the description column starts, as a row's indent plus
-// its name plus the gap, counted from where the indent begins. Once a
-// folder is entered it fits that folder's entries; before that it fits the
-// selected row, or every row when none is selected. A row whose name runs
-// past it pushes only its own description right (drawTreeRow).
+// its name plus the gap, counted from where the indent begins. It fits the
+// folder the selected row is in, whether that folder was entered or opened in
+// place; with the selection at the top level it fits the entered folder's
+// entries, or before any folder is entered the selected row alone, or every
+// row when none is selected. A row whose name runs past it pushes only its
+// own description right (drawTreeRow).
 func descColumn(ctx *core.TreeContext, cfg Config, visible []core.TreeRow) int {
 	need := func(row core.TreeRow) int {
 		n := 0
@@ -325,7 +327,7 @@ func descColumn(ctx *core.TreeContext, cfg Config, visible []core.TreeRow) int {
 		return rowIndent(row, cfg) + n + ctx.ColGap
 	}
 	col := 12 // so the headers don't collapse
-	if folder := ctx.Scope[len(ctx.Scope)-1].ParentIdx; folder >= 0 && folder < len(ctx.AllItems) {
+	fit := func(folder int) int {
 		for _, idx := range ctx.AllItems[folder].Children {
 			if idx < len(ctx.AllItems) && !ctx.AllItems[idx].Hidden {
 				col = max(col, need(core.TreeRow{Item: ctx.AllItems[idx], ItemIdx: idx}))
@@ -333,7 +335,16 @@ func descColumn(ctx *core.TreeContext, cfg Config, visible []core.TreeRow) int {
 		}
 		return col
 	}
-	if ctx.TreeCursor >= 0 && ctx.TreeCursor < len(visible) {
+	selected := ctx.TreeCursor >= 0 && ctx.TreeCursor < len(visible)
+	if selected {
+		if folder := visible[ctx.TreeCursor].Item.ParentIdx; folder >= 0 && folder < len(ctx.AllItems) {
+			return fit(folder)
+		}
+	}
+	if folder := ctx.Scope[len(ctx.Scope)-1].ParentIdx; folder >= 0 && folder < len(ctx.AllItems) {
+		return fit(folder)
+	}
+	if selected {
 		return max(col, need(visible[ctx.TreeCursor]))
 	}
 	for _, row := range visible {

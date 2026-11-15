@@ -51,9 +51,9 @@ func descAt(t *testing.T, rows []string, name, desc string, depth int) int {
 	return 0
 }
 
-// The description column fits the selected row until a folder is entered,
-// then that folder's entries; a longer name pushes only its own description
-// (FT-7).
+// The description column fits the selected row until a folder is entered or
+// the selection is inside one opened in place, then that folder's entries; a
+// longer name pushes only its own description (FT-7, FT-9).
 func TestDescColumnFollowsTheSelection(t *testing.T) {
 	cfg := Config{Layout: "reverse", Tiered: true, TreeMode: true, DepthPenalty: 5, HidePalette: true}
 	long := len("a-command-with-a-very-long-name") + 1
@@ -75,6 +75,11 @@ func TestDescColumnFollowsTheSelection(t *testing.T) {
 			"The first entry":  2 + len("first-entry") + 2,
 			"The second entry": 2 + len("first-entry") + 2,
 			"Restart the app":  2 + len("first-entry") + 2,
+			"Far away":         long,
+		}},
+		{"folder opened in place by a search", "entr{down}", map[string]int{
+			"The first entry":  2 + len("first-entry") + 2,
+			"The second entry": 2 + len("first-entry") + 2,
 			"Far away":         long,
 		}},
 		{"entered folder, cursor outside it", "{down}{down}{down}{enter}{up}{up}", map[string]int{
