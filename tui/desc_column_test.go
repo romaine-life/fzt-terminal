@@ -62,16 +62,16 @@ func TestDescColumnFollowsTheSelection(t *testing.T) {
 		keys string
 		want map[string]int // a row's description, and where it should start
 	}{
-		{"selected row", "{down}{down}{down}{down}", map[string]int{
+		{"selected row", "{down}{down}{down}", map[string]int{
 			"Restart the app": len("reload-the-app") + 2,
 			"Show the links":  len("reload-the-app") + 2,
 			"Far away":        long,
 		}},
-		{"short selected row keeps the minimum", "{down}", map[string]int{
+		{"short selected row keeps the minimum", "", map[string]int{
 			"Show the links": 12,
 			"Far away":       long,
 		}},
-		{"entered folder", "{down}{down}{down}{enter}{down}", map[string]int{
+		{"entered folder", "{down}{down}{enter}{down}", map[string]int{
 			"The first entry":  2 + len("first-entry") + 2,
 			"The second entry": 2 + len("first-entry") + 2,
 			"Restart the app":  2 + len("first-entry") + 2,
@@ -82,7 +82,7 @@ func TestDescColumnFollowsTheSelection(t *testing.T) {
 			"The second entry": 2 + len("first-entry") + 2,
 			"Far away":         long,
 		}},
-		{"entered folder, cursor outside it", "{down}{down}{down}{enter}{up}{up}", map[string]int{
+		{"entered folder, cursor outside it", "{down}{down}{enter}{up}{up}", map[string]int{
 			"The second entry": 2 + len("first-entry") + 2,
 			"Show the links":   2 + len("first-entry") + 2,
 		}},

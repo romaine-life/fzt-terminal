@@ -618,20 +618,20 @@ func newLoopState(items []core.Item, cfg Config) (*core.State, []int) {
 	ctx := s.TopCtx()
 	ctx.TreeExpanded = make(map[int]bool)
 	ctx.QueryExpanded = make(map[int]bool)
-	ctx.TreeCursor = -1
+	core.RestCursor(s, cfg)
 	return s, searchCols
 }
 
 // clearSearch puts the top of the menu back to its resting state.
-func clearSearch(s *core.State) {
+func clearSearch(s *core.State, cfg Config) {
 	ctx := s.TopCtx()
 	ctx.Query = nil
 	ctx.Cursor = 0
 	ctx.Filtered = nil
 	ctx.SearchActive = false
 	ctx.NavMode = false
-	ctx.TreeCursor = -1
 	ctx.QueryExpanded = make(map[int]bool)
+	core.RestCursor(s, cfg)
 }
 
 // enterStartFolder opens the menu inside cfg.StartFolder, once the tree is
@@ -696,7 +696,7 @@ func sessionLoop(screen tcell.Screen, items []core.Item, cfg Config, live *Live,
 			return onPick(p)
 		}
 		if p.Kind != "command" {
-			clearSearch(s)
+			clearSearch(s, cfg)
 		}
 		return onPick(p)
 	}
@@ -725,7 +725,7 @@ func sessionLoop(screen tcell.Screen, items []core.Item, cfg Config, live *Live,
 			}
 			if stepped && ev.Key() == tcell.KeyEscape && s.PromptMode == "" && !core.KeyPopupOpen(s) {
 				if len(s.TopCtx().Query) > 0 {
-					clearSearch(s)
+					clearSearch(s, cfg)
 				} else if end(Pick{Kind: "cancel"}) {
 					return
 				}
@@ -912,7 +912,7 @@ func Simulate(items []core.Item, cfg Config, query string, w, h int, styled bool
 		ctx := s.TopCtx()
 		ctx.TreeExpanded = make(map[int]bool)
 		ctx.QueryExpanded = make(map[int]bool)
-		ctx.TreeCursor = -1
+		core.RestCursor(s, cfg)
 	}
 
 	if cfg.FocusedDir != "" && s.Provider != nil {
