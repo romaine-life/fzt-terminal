@@ -143,7 +143,7 @@ func drawTree(c render.Canvas, s *core.State, cfg Config, w, startY, h int) {
 			lockedStyle := tcell.StyleDefault.Foreground(PathFg).Background(promptBg)
 			path := scopedPath(ctx, (pw-promptLen-scopeLen)/2)
 			drawText(c, tx+scopeLen, y, path, lockedStyle, pw-promptLen-scopeLen)
-			scopeLen += len([]rune(path)) + 1
+			scopeLen += core.Width(path) + 1
 		} else if len(ctx.Scope) > 1 {
 			lockedStyle := tcell.StyleDefault.Foreground(PathFg).Background(promptBg)
 			for si := 1; si < len(ctx.Scope); si++ {
@@ -151,7 +151,7 @@ func drawTree(c render.Canvas, s *core.State, cfg Config, w, startY, h int) {
 				if level.ParentIdx >= 0 && level.ParentIdx < len(ctx.AllItems) {
 					name := ctx.AllItems[level.ParentIdx].Fields[0]
 					drawText(c, tx+scopeLen, y, name, lockedStyle, pw-promptLen-scopeLen)
-					scopeLen += len([]rune(name))
+					scopeLen += core.Width(name)
 					c.SetContent(tx+scopeLen, y, ' ', nil, lockedStyle)
 					scopeLen++
 				}
@@ -166,18 +166,14 @@ func drawTree(c render.Canvas, s *core.State, cfg Config, w, startY, h int) {
 		if s.PromptMode != "" {
 			queryStyle := tcell.StyleDefault.Foreground(QueryFg).Background(promptBg)
 			// Text longer than the box slides left to keep the cursor in it.
-			offset := min(max(s.PromptCursor-contentW+1, 0), len(s.PromptQuery))
+			offset := queryStart(s.PromptQuery, s.PromptCursor, contentW)
 			if len(s.PromptQuery) > 0 {
-				for i, r := range s.PromptQuery[offset:] {
-					if i >= contentW {
-						break
-					}
-					style := queryStyle
+				drawClusters(c, contentX, y, string(s.PromptQuery[offset:]), contentW, func(i int) tcell.Style {
 					if offset+i < s.PromptSelected {
-						style = style.Reverse(true)
+						return queryStyle.Reverse(true)
 					}
-					c.SetContent(contentX+i, y, r, nil, style)
-				}
+					return queryStyle
+				})
 			} else {
 				hint := s.PromptPlaceholder
 				if hint == "" {
@@ -186,16 +182,16 @@ func drawTree(c render.Canvas, s *core.State, cfg Config, w, startY, h int) {
 				hintStyle := tcell.StyleDefault.Foreground(HintFg).Italic(true).Background(promptBg)
 				drawText(c, contentX, y, hint, hintStyle, contentW)
 			}
-			c.ShowCursor(contentX+s.PromptCursor-offset, y)
+			c.ShowCursor(contentX+core.Width(string(s.PromptQuery[offset:s.PromptCursor])), y)
 		} else if s.EditMode == "rename" {
 			// Rename mode — show edit buffer as editable text
 			renameStyle := tcell.StyleDefault.Foreground(QueryFg).Background(promptBg)
 			drawText(c, contentX, y, string(s.EditBuffer), renameStyle, contentW)
-			c.ShowCursor(contentX+len(s.EditBuffer), y)
+			c.ShowCursor(contentX+core.Width(string(s.EditBuffer)), y)
 		} else if hasQuery {
 			queryStyle := tcell.StyleDefault.Foreground(QueryFg).Background(promptBg)
 			drawText(c, contentX, y, string(ctx.Query), queryStyle, contentW)
-			c.ShowCursor(contentX+ctx.Cursor, y)
+			c.ShowCursor(contentX+core.Width(string(ctx.Query[:ctx.Cursor])), y)
 
 			if core.TagSearchActive(ctx) {
 				drawTagPrompt(c, ctx, contentX, y, contentW, promptBg)
@@ -205,7 +201,8 @@ func drawTree(c render.Canvas, s *core.State, cfg Config, w, startY, h int) {
 				if len(nameRunes) > len(ctx.Query) && strings.EqualFold(string(nameRunes[:len(ctx.Query)]), string(ctx.Query)) {
 					ghost := string(nameRunes[len(ctx.Query):])
 					ghostStyle := tcell.StyleDefault.Foreground(GhostFg).Background(promptBg)
-					drawText(c, contentX+len(ctx.Query), y, ghost, ghostStyle, contentW-len(ctx.Query))
+					queryW := core.Width(string(ctx.Query))
+					drawText(c, contentX+queryW, y, ghost, ghostStyle, contentW-queryW)
 				}
 			}
 		} else if ctx.SearchActive || len(ctx.Scope) > 1 {
@@ -322,7 +319,7 @@ func descColumn(ctx *core.TreeContext, cfg Config, visible []core.TreeRow) int {
 	need := func(row core.TreeRow) int {
 		n := 0
 		if len(row.Item.Fields) > 0 {
-			n = len([]rune(row.Item.Fields[0]))
+			n = core.Width(row.Item.Fields[0])
 		}
 		return rowIndent(row, cfg) + n + ctx.ColGap
 	}
@@ -433,9 +430,8 @@ func drawTreeRow(c render.Canvas, row core.TreeRow, isSelected, isTopMatch bool,
 	}
 
 	nameWidth := effectiveNameCol - indent
-	nameRunes := []rune(name)
-	if nameWidth < len(nameRunes)+1 {
-		nameWidth = len(nameRunes) + 1
+	if nameWidth < core.Width(name)+1 {
+		nameWidth = core.Width(name) + 1
 	}
 
 	// Highlight matched characters for top match
@@ -472,14 +468,14 @@ func drawTreeRow(c render.Canvas, row core.TreeRow, isSelected, isTopMatch bool,
 func drawKeycaps(c render.Canvas, keys []string, right, y int) int {
 	width := 0
 	for _, k := range keys {
-		width += len([]rune(k)) + 3 // the cap's padding and the gap after it
+		width += core.Width(k) + 3 // the cap's padding and the gap after it
 	}
 	x := right - width
 	start := x
 	for _, k := range keys {
 		cap := " " + k + " "
-		drawText(c, x, y, cap, KeycapStyle, len([]rune(cap)))
-		x += len([]rune(cap)) + 1
+		drawText(c, x, y, cap, KeycapStyle, core.Width(cap))
+		x += core.Width(cap) + 1
 	}
 	return start
 }
@@ -490,16 +486,12 @@ func drawKeycaps(c render.Canvas, keys []string, right, y int) int {
 // over the row's style and keeping its background, with the characters a
 // search matched highlighted over everything.
 func drawRowText(c render.Canvas, x, y int, text string, styled []core.StyledRune, baseStyle tcell.Style, maxW int, matchIndices []int, hasBg bool) {
-	runes := []rune(text)
 	matchSet := make(map[int]bool, len(matchIndices))
 	for _, idx := range matchIndices {
 		matchSet[idx] = true
 	}
 
-	for i, r := range runes {
-		if i >= maxW {
-			break
-		}
+	drawClusters(c, x, y, text, maxW, func(i int) tcell.Style {
 		style := baseStyle
 		if i < len(styled) {
 			fg, _, attrs := styled[i].Style.Decompose()
@@ -515,8 +507,8 @@ func drawRowText(c render.Canvas, x, y int, text string, styled []core.StyledRun
 				style = style.Background(SelectionBg)
 			}
 		}
-		c.SetContent(x+i, y, r, nil, style)
-	}
+		return style
+	})
 }
 
 // styledField is an item's field i in its own colours, or nil if its input
@@ -601,12 +593,7 @@ func drawPanel(c render.Canvas, p core.Panel, borderOffset, y, w int) {
 			}
 			line = append(line, ' ', '…')
 		}
-		for j, r := range line {
-			if j >= width {
-				break
-			}
-			c.SetContent(x+j, y+1+i, r, nil, style)
-		}
+		drawClusters(c, x, y+1+i, string(line), width, func(int) tcell.Style { return style })
 	}
 }
 
@@ -617,11 +604,11 @@ var panelHintFg = tcell.NewRGBColor(0x55, 0x55, 0x55)
 // term resolved to (the ghost Tab accepts) and, past that, the terms that
 // matched no tag.
 func drawTagPrompt(c render.Canvas, ctx *core.TreeContext, x, y, w int, bg tcell.Color) {
-	used := len(ctx.Query)
+	used := core.Width(string(ctx.Query))
 	if ctx.Cursor == len(ctx.Query) {
 		if ghost := core.TagGhost(ctx); ghost != "" {
 			drawText(c, x+used, y, ghost, tcell.StyleDefault.Foreground(GhostFg).Background(bg), w-used)
-			used += len([]rune(ghost))
+			used += core.Width(ghost)
 		}
 	}
 	var missing []string
@@ -661,6 +648,6 @@ func drawTags(c render.Canvas, x, y int, item core.Item, terms []core.TagTerm, h
 			return
 		}
 		drawText(c, x, y, tag, style, end-x)
-		x += len([]rune(tag))
+		x += core.Width(tag)
 	}
 }

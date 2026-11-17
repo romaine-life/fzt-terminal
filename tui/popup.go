@@ -19,8 +19,12 @@ func drawKeyPopup(c render.Canvas, s *core.State, cfg Config, w, startY, h int, 
 
 	for y := startY; y < startY+h; y++ {
 		for x := 0; x < w; x++ {
-			_, bg, _ := mem.Styles[y][x].Decompose()
-			c.SetContent(x, y, mem.Grid[y][x], nil, tcell.StyleDefault.Foreground(UnderPopupFg).Background(bg))
+			primary, combining, style, width := mem.Cell(x, y)
+			if width == 0 {
+				continue // the right half of a wide cluster, drawn with its left
+			}
+			_, bg, _ := style.Decompose()
+			c.SetContent(x, y, primary, combining, tcell.StyleDefault.Foreground(UnderPopupFg).Background(bg))
 		}
 	}
 

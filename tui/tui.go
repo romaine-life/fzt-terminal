@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/uniseg"
 	frontend "github.com/romaine-life/fzt-frontend"
 	"github.com/romaine-life/fzt/core"
 	"github.com/romaine-life/fzt/render"
@@ -1104,7 +1105,7 @@ func drawReverse(c render.Canvas, s *core.State, cfg Config, w, startY, h int) {
 	if promptStr == "" {
 		promptStr = "> "
 	}
-	promptLen := len([]rune(promptStr))
+	promptLen := core.Width(promptStr)
 
 	if len(ctx.Query) > 0 {
 		// Typing: show query with cursor
@@ -1287,7 +1288,7 @@ func drawDefault(c render.Canvas, s *core.State, cfg Config, w, startY, h int) {
 	if promptStr == "" {
 		promptStr = "> "
 	}
-	promptLen := len([]rune(promptStr))
+	promptLen := core.Width(promptStr)
 
 	if len(ctx.Query) > 0 {
 		promptStyle := tcell.StyleDefault.Foreground(PromptActiveFg).Bold(true)
@@ -1314,7 +1315,6 @@ func drawDefault(c render.Canvas, s *core.State, cfg Config, w, startY, h int) {
 
 // drawFieldText draws text with optional ANSI styles and match highlighting. No column padding.
 func drawFieldText(c render.Canvas, x, y int, field string, styledRunes []core.StyledRune, indices []int, baseStyle tcell.Style, isSelected bool, maxW int) int {
-	runes := []rune(field)
 	indexSet := make(map[int]bool)
 	for _, idx := range indices {
 		indexSet[idx] = true
@@ -1325,10 +1325,7 @@ func drawFieldText(c render.Canvas, x, y int, field string, styledRunes []core.S
 		hlStyle = hlStyle.Background(SelectionBg)
 	}
 
-	for i, r := range runes {
-		if x >= maxW {
-			break
-		}
+	return x + drawClusters(c, x, y, field, max(maxW-x, 0), func(i int) tcell.Style {
 		style := baseStyle
 		if styledRunes != nil && i < len(styledRunes) {
 			style = styledRunes[i].Style
@@ -1340,24 +1337,17 @@ func drawFieldText(c render.Canvas, x, y int, field string, styledRunes []core.S
 		if indexSet[i] {
 			style = hlStyle
 		}
-		c.SetContent(x, y, r, nil, style)
-		x++
-	}
-	return x
+		return style
+	})
 }
 
 func drawHighlightedField(c render.Canvas, x, y int, field string, styledRunes []core.StyledRune, indices []int, baseStyle tcell.Style, isSelected bool, widths []int, fieldIdx, gap, maxW int) int {
-	runes := []rune(field)
 	indexSet := make(map[int]bool)
 	for _, idx := range indices {
 		indexSet[idx] = true
 	}
 
-	for i, r := range runes {
-		if x >= maxW {
-			break
-		}
-
+	drawn := drawClusters(c, x, y, field, max(maxW-x, 0), func(i int) tcell.Style {
 		style := baseStyle
 
 		// Layer 1: Apply ANSI color if available
@@ -1378,20 +1368,14 @@ func drawHighlightedField(c render.Canvas, x, y int, field string, styledRunes [
 				style = style.Foreground(HighlightFg).Bold(true)
 			}
 		}
-
-		c.SetContent(x, y, r, nil, style)
-		x++
-	}
+		return style
+	})
+	x += drawn
 
 	if fieldIdx < len(widths)-1 {
-		padTo := widths[fieldIdx]
-		for len(runes) < padTo {
-			if x >= maxW {
-				break
-			}
+		for ; drawn < widths[fieldIdx] && x < maxW; drawn++ {
 			c.SetContent(x, y, ' ', nil, baseStyle)
 			x++
-			runes = append(runes, ' ')
 		}
 		for g := 0; g < gap; g++ {
 			if x >= maxW {
@@ -1406,12 +1390,7 @@ func drawHighlightedField(c render.Canvas, x, y int, field string, styledRunes [
 }
 
 func drawText(c render.Canvas, x, y int, text string, style tcell.Style, maxW int) {
-	for i, r := range []rune(text) {
-		if i >= maxW {
-			break
-		}
-		c.SetContent(x+i, y, r, nil, style)
-	}
+	drawClusters(c, x, y, text, maxW, func(int) tcell.Style { return style })
 }
 
 func drawBorderTop(c render.Canvas, w, y int) {
@@ -1433,15 +1412,15 @@ func drawBorderTopWithTitle(c render.Canvas, w, y int, title, pos string, titleS
 	c.SetContent(w-1, y, '\u2510', nil, borderStyle)
 
 	if title != "" {
-		titleRunes := []rune(title)
 		maxTitle := w - 6 // leave room for corners + at least one - + spaces on each side
 		if maxTitle < 1 {
 			return
 		}
-		for cellWidth(titleRunes) > maxTitle {
-			titleRunes = titleRunes[:len(titleRunes)-1]
+		titleClusters := titleCells(title, maxTitle)
+		titleW := 0
+		for _, tc := range titleClusters {
+			titleW += tc.cells
 		}
-		titleW := cellWidth(titleRunes)
 		var startX int
 		switch pos {
 		case "center":
@@ -1473,12 +1452,13 @@ func drawBorderTopWithTitle(c render.Canvas, w, y int, title, pos string, titleS
 		}
 		c.SetContent(startX, y, ' ', nil, borderStyle)
 		x := startX + 1
-		for _, r := range titleRunes {
-			c.SetContent(x, y, r, nil, tStyle)
-			if runeCells(r) == 2 {
+		for _, tc := range titleClusters {
+			runes := []rune(tc.cluster)
+			c.SetContent(x, y, runes[0], runes[1:], tStyle)
+			if tc.cells == 2 && core.Width(tc.cluster) < 2 {
 				c.SetContent(x+1, y, ' ', nil, tStyle)
 			}
-			x += runeCells(r)
+			x += tc.cells
 		}
 		c.SetContent(x, y, ' ', nil, borderStyle)
 	}
@@ -1502,37 +1482,44 @@ func drawBorderTopWithTitle(c render.Canvas, w, y int, title, pos string, titleS
 
 	// Label pinned to top-left of border
 	if len(label) > 0 && label[0] != "" {
-		lRunes := []rune(label[0])
 		lStart := 2 // 1 corner + 1 -
-		maxLen := w - 6
-		if len(lRunes) > maxLen {
-			lRunes = lRunes[:maxLen]
-		}
 		lStyle := tcell.StyleDefault.Foreground(LabelFg)
 		c.SetContent(lStart, y, ' ', nil, borderStyle)
-		for i, r := range lRunes {
-			c.SetContent(lStart+1+i, y, r, nil, lStyle)
+		lW := drawClusters(c, lStart+1, y, label[0], max(w-6, 0), func(int) tcell.Style { return lStyle })
+		c.SetContent(lStart+1+lW, y, ' ', nil, borderStyle)
+	}
+}
+
+type titleCell struct {
+	cluster string
+	cells   int
+}
+
+// titleCells is a border title's grapheme clusters that fit in maxW cells.
+// A Nerd Font icon (a private use rune) takes two cells, its glyph and a
+// space, as in tree rows and the picker's GDI renderer; anything else takes
+// the columns the terminal gives it.
+func titleCells(title string, maxW int) []titleCell {
+	var out []titleCell
+	used, state := 0, -1
+	for title != "" {
+		var cluster string
+		cluster, title, _, state = uniseg.FirstGraphemeClusterInString(title, state)
+		cells := max(core.Width(cluster), 1)
+		if r := []rune(cluster); len(r) == 1 && isPrivateUse(r[0]) {
+			cells = 2
 		}
-		c.SetContent(lStart+1+len(lRunes), y, ' ', nil, borderStyle)
+		if used+cells > maxW {
+			break
+		}
+		out = append(out, titleCell{cluster, cells})
+		used += cells
 	}
+	return out
 }
 
-// runeCells is how many cells a rune takes in a border title: Nerd Font
-// icons (private use area, or beyond the BMP) take two, as in tree rows and
-// the picker's GDI renderer.
-func runeCells(r rune) int {
-	if r > 0xFFFF || (r >= 0xE000 && r <= 0xF8FF) {
-		return 2
-	}
-	return 1
-}
-
-func cellWidth(runes []rune) int {
-	n := 0
-	for _, r := range runes {
-		n += runeCells(r)
-	}
-	return n
+func isPrivateUse(r rune) bool {
+	return (r >= 0xE000 && r <= 0xF8FF) || r >= 0xF0000
 }
 
 func drawBorderBottom(c render.Canvas, w, y int) {
