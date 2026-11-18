@@ -607,7 +607,8 @@ func (l *Live) Ask(hint, text string, selected int) {
 // Close ends the menu: RunLoop returns once queued calls before it are applied.
 func (l *Live) Close() { l.post(liveEvent{close: true}) }
 
-// OnAbort sets what Escape does while the menu is frozen (nil: nothing). It is
+// OnAbort sets what Escape and Ctrl+C do while the menu is frozen (nil:
+// nothing). It is
 // how a frontend lets the user give up waiting on a command.
 func (l *Live) OnAbort(f func()) { l.post(liveEvent{abort: &f}) }
 
@@ -712,7 +713,7 @@ func sessionLoop(screen tcell.Screen, items []core.Item, cfg Config, live *Live,
 		switch ev := ev.(type) {
 		case *tcell.EventKey:
 			if s.Frozen {
-				if ev.Key() == tcell.KeyEscape && live != nil && live.abort != nil {
+				if (ev.Key() == tcell.KeyEscape || ev.Key() == tcell.KeyCtrlC) && live != nil && live.abort != nil {
 					live.abort()
 				}
 				break

@@ -366,3 +366,27 @@ func TestScopedShortenedPathKeepsItsGap(t *testing.T) {
 	sep := string(filepath.Separator)
 	h.waitRow(6, " …"+strings.Join([]string{"ker", "fp-1-fzt-files", "qa", "dest", " qa "}, sep))
 }
+
+// Ctrl+C gives up a running command's wait as Escape does, and once the menu
+// is live again it quits from wherever the user is, an Ask box included.
+func TestLoopCtrlCAbortsTheWaitThenQuits(t *testing.T) {
+	h := startLoop(t, loopYAML, loopCfg())
+	aborted := make(chan struct{}, 1)
+	h.live.Update(func(s *core.State) { s.Freeze() })
+	h.live.OnAbort(func() { aborted <- struct{}{} })
+	h.key(tcell.KeyCtrlC)
+	select {
+	case <-aborted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Ctrl+C while frozen didn't call the abort")
+	}
+	h.noPick()
+	h.live.OnAbort(nil)
+	h.live.Update(func(s *core.State) { s.Unfreeze() })
+	h.live.Ask("new name", "ab", 2)
+	h.waitRow(6, "ab")
+	h.key(tcell.KeyCtrlC)
+	if p := h.pick(); p.Kind != "cancel" {
+		t.Fatalf("Ctrl+C in Ask = %+v, want cancel", p)
+	}
+}
