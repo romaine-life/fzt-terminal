@@ -6,7 +6,7 @@ require (
 	github.com/gdamore/tcell/v2 v2.13.10
 	github.com/rivo/uniseg v0.4.7
 	github.com/romaine-life/fzt v0.2.119
-	github.com/romaine-life/fzt-frontend v0.1.77
+	github.com/romaine-life/fzt-frontend v0.1.78
 	golang.org/x/term v0.47.0
 )
 
