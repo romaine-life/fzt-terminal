@@ -241,6 +241,18 @@ The `tui` package is a library; consumers (`fzt-automate`, `fzt-picker`, `fzt-br
 
 `cmd/fzt` is the `fzt` binary: an fzf-style picker. Pipe lines in (or pass `--yaml`), get the selection on stdout; exit 130 on cancel, 1 on empty input. `--filter "query"` prints ranked matches without a UI (this replaces the engine repo's old scoring-only CLI). Piped lists render with the same tree renderer as fzt-automate (search box panel, icon column), so every fzt picker looks alike. `--height` is accepted and ignored for fzf compatibility. The `:` palette is off (`HidePalette`) — a plain picker has no commands. `--tiered` makes piped rows a tree: the first column is depth, a row holds the deeper rows after it, Enter opens it in place and Esc or Backspace backs up (`linkTree`; parent indices count from the first row after the header lines, which the state sets apart). `--input-col N` makes a row whose field N is set ask for text on Enter, that field as the hint, and print the selection, a tab and the text. `--tags-col N` reads a row's tags (separated by spaces or commas) from field N for tag search. All three serve the tmux command palette (the tmux fork's `display-palette`). Shell scripts across shell-config (`pop`, `ws-load`, `vcs`, the profile-5 Tab handler) call it by name.
 
+Checklists (the engine's `Item.Checklist`): with `--tiered`, `--checklist-col N` makes a folder whose field N is set a folder of checkboxes, and `--ticked-col N` ticks a row whose field N is set as the menu opens (fields count after the depth column). Inside the folder Enter or a click ticks a row; picking any other row prints the pick, then each ticked row, a line each. The renderer draws a checkbox in place of a checklist row's icon (`TickedIcon`, `UntickedIcon`) and counts the ticked rows at the right of the search box (`drawTickCount`).
+
+`--pane` is for a caller with no terminal of its own, such as a Claude session's shell: fzt opens a tmux split under the pane it runs in (`TMUX_PANE`), runs itself there with the same flags plus `--pane-io <folder>`, waits for that process to end, then prints its answer and returns its exit code as if it had run in place (`cmd/fzt/pane.go`). The split reads its input from the folder and writes its answer, errors and exit code there. It closes itself, removing the folder, if the asking fzt ends first, since nobody could read an answer then, and it is marked `@session-set-shell` so a tmux restore never reruns it. The arguments are quoted for CreateProcess, as fzt-automate's `tmuxProgram` does, because the Windows tmux joins them into one command line. Windows only: it waits on the split's process handle, which only Windows allows for a process that isn't fzt's child, so the split's end is an event, not a poll.
+
+Any session can hand Nelson a checklist this way:
+
+```
+$rows | fzt --tiered --checklist-col 3 --ticked-col 4 --pane --border --title "Unsubscribe from which senders?"
+```
+
+where `$rows` is tab-separated `depth name description checklist ticked`: a depth-0 folder with `x` in its checklist field, its depth-1 rows (an `x` in ticked suggests a tick), and depth-0 answer rows beside it ("unsubscribe", "not now"). Exit 130 is Esc or Ctrl+C; 2 is a failure, its message on stderr.
+
 ```
 go build -o fzt.exe ./cmd/fzt
 go test ./cmd/fzt
@@ -268,6 +280,10 @@ Menu CRUD used to live in `packages/routes/` here (`@nelsong6/fzt-terminal-route
 - **Internalized shell commands**: load-*, unload, sync handled internally in HandleCommandAction -- no PowerShell function dependencies. load auto-syncs and exits; unload clears cache and exits.
 
 ## Change log
+
+### 2026-11-18
+
+- Checklists and `--pane`: `fzt` draws the engine's checkbox folders, takes `--checklist-col` and `--ticked-col`, and with `--pane` opens in a tmux split under its caller and returns the answer there, so any Claude session can hand Nelson a list of yes/no choices and get them back (the first: email senders to unsubscribe from, TUI-16). OpenProject FT-11.
 
 ### 2026-11-11
 

@@ -104,7 +104,9 @@ var (
 	TitleErrorFg    = tcell.ColorRed
 	TitleNeutralFg  = tcell.ColorLightGray // "registered but no action" — distinct from success
 	SyncIconFg      = tcell.ColorYellow
-	SyncFailedFg    = tcell.ColorRed // the background check couldn't sign in or reach the menu
+	SyncFailedFg    = tcell.ColorRed      // the background check couldn't sign in or reach the menu
+	TickedFg        = tcell.ColorGreen    // a checklist's ticked box (Item.Checklist)
+	UntickedFg      = tcell.ColorDarkGray // a checklist's empty box
 	// The menu under the `/` pop-up, faded so the pop-up reads as on top.
 	UnderPopupFg = tcell.NewRGBColor(0x58, 0x5b, 0x70)
 )
@@ -112,3 +114,10 @@ var (
 // KeycapStyle draws a key in the `/` pop-up: light text on the prompt
 // bar's grey, like a key on a keyboard.
 var KeycapStyle = tcell.StyleDefault.Foreground(tcell.ColorLightGray).Background(PromptSurfaceBg)
+
+// A checklist's boxes (Item.Checklist), Nerd Font icons two cells wide like the
+// folder and file icons they stand in for.
+const (
+	TickedIcon   = '\U000F0132' // nf-md-checkbox_marked
+	UntickedIcon = '\U000F0131' // nf-md-checkbox_blank_outline
+)

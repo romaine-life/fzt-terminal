@@ -218,6 +218,9 @@ func drawTree(c render.Canvas, s *core.State, cfg Config, w, startY, h int) {
 			drawText(c, qx, y, "type to search\u2026", hintStyle, pw-promptLen-scopeLen)
 			c.ShowCursor(qx, y)
 		}
+		if core.HasChecklist(s) {
+			drawTickCount(c, s, w-borderOffset-2, y, promptBg)
+		}
 		y++
 
 		// Bottom border of prompt bar
@@ -393,6 +396,12 @@ func drawTreeRow(c render.Canvas, row core.TreeRow, isSelected, isTopMatch bool,
 	if row.Item.IsProperty {
 		iconRune = '\u2699' // ⚙ gear icon for property items
 		iconStyle = tcell.StyleDefault.Foreground(HintFg)
+	} else if core.IsCheckRow(ctx, row.Item) && row.Item.Ticked {
+		iconRune = TickedIcon
+		iconStyle = tcell.StyleDefault.Foreground(TickedFg).Bold(true)
+	} else if core.IsCheckRow(ctx, row.Item) {
+		iconRune = UntickedIcon
+		iconStyle = tcell.StyleDefault.Foreground(UntickedFg)
 	} else if row.Item.HasChildren || row.Item.IsDir {
 		iconRune = '\U000F024B'
 		iconStyle = tcell.StyleDefault.Foreground(FolderIconFg).Bold(true)
@@ -650,4 +659,14 @@ func drawTags(c render.Canvas, x, y int, item core.Item, terms []core.TagTerm, h
 		drawText(c, x, y, tag, style, end-x)
 		x += core.Width(tag)
 	}
+}
+
+// drawTickCount puts a checklist's ticked count at the right end of the search
+// box, its last cell at column right.
+func drawTickCount(c render.Canvas, s *core.State, right, y int, bg tcell.Color) {
+	label := fmt.Sprintf("%d ticked", len(core.Ticked(s)))
+	x := right - core.Width(label) - 2
+	c.SetContent(x, y, TickedIcon, nil, tcell.StyleDefault.Foreground(TickedFg).Background(bg))
+	c.SetContent(x+1, y, ' ', nil, tcell.StyleDefault.Background(bg))
+	drawText(c, x+2, y, label, tcell.StyleDefault.Foreground(HintFg).Background(bg), core.Width(label))
 }

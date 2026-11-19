@@ -44,7 +44,7 @@ func TestTieredRowsOpenAsSubMenus(t *testing.T) {
 	// The tmux palette's shape: a header, then a folder whose first child follows it.
 	lines := []string{"0\tmove-tab\tMove the tab", "1\twork\tsession\tid-work", "1\tplay\tsession\tid-play", "0\tkill-pane\tDestroy the pane\tid-kill"}
 	cfg := tui.Config{Layout: "reverse", HidePalette: true, Tiered: true, DepthPenalty: 5, Delimiter: "\t", AcceptNth: []int{3}}
-	items := stdinItems(lines, &cfg, "name\tdescription", 0, 0)
+	items := stdinItems(lines, &cfg, "name\tdescription", columns{})
 	data := items[cfg.HeaderLines:]
 	if !data[0].HasChildren || data[1].ParentIdx != 0 || data[2].ParentIdx != 0 || data[3].ParentIdx != -1 {
 		t.Fatalf("tree not linked: %+v", data)
@@ -102,7 +102,7 @@ func TestTagSearchShowsTagsInDescriptionColumn(t *testing.T) {
 		"0\tkill-session\tDestroy a session\t\tid-3\tsession kill",
 	}
 	cfg := tui.Config{Layout: "reverse", HidePalette: true, Tiered: true, DepthPenalty: 5, Delimiter: "\t", TagMode: true}
-	items := stdinItems(lines, &cfg, "name\tdescription", 0, 5)
+	items := stdinItems(lines, &cfg, "name\tdescription", columns{tags: 5})
 	if got := items[cfg.HeaderLines+1].Tags; strings.Join(got, "|") != "session|client|switch" {
 		t.Fatalf("tags = %q", got)
 	}
@@ -119,5 +119,26 @@ func TestTagSearchShowsTagsInDescriptionColumn(t *testing.T) {
 	frames = tui.Simulate(items, cfg, "sess zzz", 100, 10, false)
 	if last := frames[len(frames)-1].Content; !strings.Contains(last, "no tag: zzz") {
 		t.Fatalf("unresolved term not reported:\n%s", last)
+	}
+}
+
+// A tiered folder whose checklist field is set holds checkboxes; its rows
+// start ticked by their ticked field.
+func TestChecklistColumns(t *testing.T) {
+	cfg := tui.Config{Delimiter: "\t", Tiered: true}
+	lines := []string{"0\tsenders\tPick\tx", "1\ta\tA\t\tx", "1\tb\tB", "0\tunsubscribe\tGo", "0\tplain\tP\tx"}
+	items := stdinItems(lines, &cfg, "", columns{checklist: 3, ticked: 4})
+	if !items[0].Checklist || items[3].Checklist || items[4].Checklist {
+		t.Fatalf("checklist folders: %v %v %v (only a folder can be one)", items[0].Checklist, items[3].Checklist, items[4].Checklist)
+	}
+	if !items[1].Ticked || items[2].Ticked {
+		t.Fatalf("ticked: %v %v", items[1].Ticked, items[2].Ticked)
+	}
+}
+
+func TestPaneArgsDropPane(t *testing.T) {
+	got := strings.Join(paneArgs([]string{"--tiered", "--pane", "-pane=true", "--title", "Which?", "--", "--pane"}), " ")
+	if got != "--tiered --title Which?" {
+		t.Fatalf("got %q", got)
 	}
 }

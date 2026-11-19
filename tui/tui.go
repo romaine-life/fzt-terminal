@@ -350,8 +350,13 @@ type Pick struct {
 	// Text is what was typed into an input leaf.
 	Text string
 	// Output is the pick as text: the AcceptNth fields (then a tab and the
-	// text, for an input leaf), or the command's action. "" on cancel.
+	// text, for an input leaf), or the command's action. "" on cancel. In a
+	// menu holding a checklist (Item.Checklist), each ticked row's follows the
+	// pick's, a line each.
 	Output string
+	// Items are the ticked rows of a menu holding a checklist, in list order,
+	// with a pick.
+	Items []core.Item
 }
 
 // endingPick turns an action into the pick that ends the picker, if it ends
@@ -363,7 +368,7 @@ func endingPick(action string, r core.ActionResult) (Pick, bool) {
 	case action == "cancel" || action == "abort":
 		return Pick{Kind: "cancel"}, true
 	case strings.HasPrefix(action, "select:"):
-		return Pick{Kind: "select", Item: r.Item, Output: action[7:]}, true
+		return Pick{Kind: "select", Item: r.Item, Output: action[7:], Items: r.Items}, true
 	default:
 		return Pick{Kind: "command", Output: action}, true
 	}

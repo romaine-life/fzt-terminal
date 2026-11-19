@@ -7,6 +7,7 @@ require (
 	github.com/rivo/uniseg v0.4.7
 	github.com/romaine-life/fzt v0.2.120
 	github.com/romaine-life/fzt-frontend v0.1.79
+	golang.org/x/sys v0.49.0
 	golang.org/x/term v0.47.0
 )
 
@@ -22,7 +23,6 @@ require (
 	github.com/mtibben/percent v0.2.1 // indirect
 	github.com/romaine-life/auth v0.1.60 // indirect
 	golang.org/x/crypto v0.58.0 // indirect
-	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

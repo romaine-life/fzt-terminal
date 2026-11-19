@@ -8,6 +8,7 @@
 //	fzt --yaml menu.yaml --title "What would you like to do?"
 //	ls | fzt --filter "query"          # non-interactive: ranked matches
 //	$rows | fzt --input-col 3          # rows with a 3rd field ask for text
+//	$rows | fzt --tiered --checklist-col 3 --pane  # a menu holding a checklist, in a tmux split
 //
 // Exit codes follow fzf: 0 selected, 1 no input, 2 failed (logged), 130 cancelled.
 package main
@@ -53,6 +54,10 @@ func main() {
 		titlePos     = flag.String("title-pos", "left", "Title position: 'left', 'center' or 'right'")
 		tagsCol      = flag.Int("tags-col", 0, "Field index (1-based) holding a row's tags, separated by spaces or commas, for tag search (the : palette's tags toggle)")
 		inputCol     = flag.Int("input-col", 0, "Field index (1-based) that makes a row ask for text: a row with this field set prompts for text on Enter, the field as its hint, and prints the selection, a tab and the text")
+		checklistCol = flag.Int("checklist-col", 0, "Field index (1-based) that makes a folder a checklist (with --tiered): when set, Enter or a click on one of its rows ticks it, and a pick elsewhere prints the pick and then each ticked row, a line each")
+		tickedCol    = flag.Int("ticked-col", 0, "Field index (1-based) that ticks a checklist's row as the menu opens when it is set")
+		pane         = flag.Bool("pane", false, "Open in a tmux split under the pane this runs in (TMUX_PANE) and wait for the answer there, for a caller with no terminal of its own")
+		paneIO       = flag.String("pane-io", "", "Internal to --pane: the folder the split reads its input from and writes its answer to")
 		version      = flag.Bool("version", false, "Print version and exit")
 	)
 	flag.StringVar(delimiter, "d", "\t", "Field delimiter (shorthand)")
@@ -60,15 +65,20 @@ func main() {
 	flag.String("height", "", "Ignored (fzf compatibility)")
 	if err := flag.CommandLine.Parse(os.Args[1:]); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
-			os.Exit(0)
+			exit(0)
 		}
 		logFailure(flagError(err)) // flag has already told stderr
-		os.Exit(2)
+		exit(2)
+	}
+	if *paneIO != "" {
+		if err := usePaneIO(*paneIO); err != nil {
+			fail(err.Error(), "couldn't open the --pane folder")
+		}
 	}
 
 	if *version {
 		fmt.Println(render.Version)
-		return
+		exit(0)
 	}
 
 	cfg := tui.Config{
@@ -114,9 +124,15 @@ func main() {
 			fail(err.Error(), "couldn't read input: "+err.Error())
 		}
 		if len(lines) == 0 {
-			os.Exit(1)
+			exit(1)
 		}
-		items = stdinItems(lines, &cfg, *header, *inputCol, *tagsCol)
+		if *pane {
+			exit(runInPane(paneArgs(os.Args[1:]), lines))
+		}
+		items = stdinItems(lines, &cfg, *header, columns{input: *inputCol, tags: *tagsCol, checklist: *checklistCol, ticked: *tickedCol})
+	}
+	if *pane {
+		exit(runInPane(paneArgs(os.Args[1:]), nil))
 	}
 
 	if *filter != "" {
@@ -125,7 +141,7 @@ func main() {
 			data = items[cfg.HeaderLines:]
 		}
 		tui.RunFilter(data, *filter, cfg)
-		return
+		exit(0)
 	}
 
 	pick, err := tui.Run(items, cfg)
@@ -133,11 +149,12 @@ func main() {
 		fail(err.Error(), "couldn't open the terminal: "+err.Error())
 	}
 	if pick.Kind == "cancel" {
-		os.Exit(130)
+		exit(130)
 	}
 	if _, err := fmt.Println(pick.Output); err != nil {
 		fail(err.Error(), "couldn't write the result: "+err.Error())
 	}
+	exit(0)
 }
 
 // fail ends the run on exit 2. shown goes to whoever ran fzt and can name anything;
@@ -145,7 +162,7 @@ func main() {
 func fail(shown, logged string) {
 	fmt.Fprintln(os.Stderr, "fzt: "+shown)
 	logFailure(logged)
-	os.Exit(2)
+	exit(2)
 }
 
 // logFailure adds the flags that were set, without their values: fzt runs inside other
@@ -265,7 +282,17 @@ func linkTree(rows []core.Item) {
 
 // stdinItems builds the picker's items from piped lines: header first, then the
 // rows, linked into a tree when cfg.Tiered is set.
-func stdinItems(lines []string, cfg *tui.Config, header string, inputCol, tagsCol int) []core.Item {
+// columns are the 1-based fields that carry a row's settings (0: none).
+type columns struct {
+	input, tags, checklist, ticked int
+}
+
+// set reports whether a row's col-th field (1-based) is set.
+func set(item core.Item, col int) bool {
+	return col > 0 && len(item.Fields) >= col && item.Fields[col-1] != ""
+}
+
+func stdinItems(lines []string, cfg *tui.Config, header string, cols columns) []core.Item {
 	tiered := cfg.Tiered
 	if header != "" {
 		h := header
@@ -297,9 +324,11 @@ func stdinItems(lines []string, cfg *tui.Config, header string, inputCol, tagsCo
 	}
 	for i := start; i < len(items); i++ {
 		items[i].IsDir = isDir(items[i].Fields[0])
-		setTags(&items[i], tagsCol)
+		setTags(&items[i], cols.tags)
+		items[i].Checklist = items[i].HasChildren && set(items[i], cols.checklist)
+		items[i].Ticked = set(items[i], cols.ticked)
 		if !items[i].HasChildren {
-			markInput(&items[i], inputCol)
+			markInput(&items[i], cols.input)
 		}
 	}
 	return items
