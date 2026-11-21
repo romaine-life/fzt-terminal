@@ -177,6 +177,7 @@ Legend: ✓ = handled, ▸ = has side effect, — = unbound / silent, ↩ = tran
 | Shift+Enter | ✓ universal confirm-select (commits cursor's item, no scope push on folder) | ✓ same | ✓ confirm edit mode action (add / rename / delete / inspect) |
 | Backspace | ✓ delete last query char; on empty query, pop scope | ↩ chop last query char + return to search | ✓ delete last char of buffer |
 | Shift+Backspace | ▸ reset navigation to home (pop all scope) | ▸ same | ▸ same; preserves edit mode |
+| Ctrl+U | ✓ clear the query, keep typing in this folder (no-op on an empty query) | ↩ clear the query + return to search | ✓ empty `EditBuffer` |
 | Home / End | ✓ move query cursor to start / end | — | — |
 | Escape | ↩ first press: exit to normal mode, query preserved; further presses unwind (see below) | ▸ unwind cascade | ↩ cancel edit, return to prior mode |
 
@@ -193,6 +194,8 @@ Escape performs progressive unwind. Each press steps back one layer; reaching ro
 
 Ctrl+C skips the cascade: it cancels in one press from any step (a rename in progress is put back first).
 
+Ctrl+U, the terminal's line-erase, clears the query in one press without unwinding anything: it never leaves a folder, and from normal mode it returns to search. Where the box has a text cursor (the flat list, a prompt box from `Live.Ask` or an input entry) it deletes only the text before the cursor, as a shell does.
+
 Shift+Backspace collapses the query-clear and scope-pop steps into a single gesture — resets to home (`core.GoHome`: pop all scope, clear query, clear filtered). Preserves the active edit mode when one is set, so the user doesn't lose an in-progress add/rename while re-orienting.
 
 Backspace on an empty query at scope > 1 does step 4 (pop scope) without needing Escape. Backspace on an empty query at root with context stack > 1 pops a context.
@@ -200,7 +203,7 @@ Backspace on an empty query at scope > 1 does step 4 (pop scope) without needing
 ### Modifier policy
 
 - **Shift**: keyboard modifier for capitals and shifted symbols. Passes through as the literal character. Not a shortcut namespace.
-- **Ctrl**: Ctrl+C quits from anywhere (engine: fzt's `quit`); while a command runs (`Live.OnAbort`), it gives up the wait as Escape does. Nelson lifted the Ctrl ban of `my-homepage#24` for it on 2026-11-17: "that was before i had guarantees that i could 'own' control, like i do now" (OpenProject FZT2-7). The other retired bindings stay retired; see below.
+- **Ctrl**: Ctrl+C quits from anywhere (engine: fzt's `quit`); while a command runs (`Live.OnAbort`), it gives up the wait as Escape does. Nelson lifted the Ctrl ban of `my-homepage#24` for it on 2026-11-17: "that was before i had guarantees that i could 'own' control, like i do now" (OpenProject FZT2-7). Ctrl+U erases the line (engine: fzt's `clearQuery`), added 2026-11-20 because Nelson hadn't known it was the universal remove-line key when he started using fzt (OpenProject FT-13). The other retired bindings stay retired; see below.
 - **Alt / Meta**: never used.
 
 Why: search scoring is case-insensitive so capitals and lowercase produce identical matches, but users still need symbols and — when editing — actual capitals. Reserving Shift globally for a shortcut namespace cost more than it saved. `:` palette commands are fuzzy-matchable by name, so "save" + Enter substitutes for what used to be Shift+W.
@@ -211,21 +214,21 @@ Currently typeable in any edit buffer (rename / property-edit / add-*) because `
 
 ### Retired Ctrl bindings
 
-These Ctrl bindings were removed from the engine and the picker (`my-homepage#24`). Ctrl+C has since come back as quit-from-anywhere; the rest keep these replacements:
+These Ctrl bindings were removed from the engine and the picker (`my-homepage#24`). Ctrl+C has since come back as quit-from-anywhere, and Ctrl+U as line-erase; the rest keep these replacements:
 
 | was | now |
 |---|---|
 | Ctrl+C (cancel) | back (FZT2-7): quits from any depth, not just from root |
 | Ctrl+P / Ctrl+N (nav) | Arrow keys, or lowercase `k` / `j` in normal mode |
 | Ctrl+A / Ctrl+E (line nav) | Home / End |
-| Ctrl+U (clear query) | Escape twice on non-empty query (first press exits to normal mode, second clears), or Shift+Backspace |
+| Ctrl+U (clear query) | back (FT-13): clears the query; Escape twice and Shift+Backspace still work too |
 | Ctrl+W (delete word) | Backspace repeatedly, or Escape-Escape / Shift+Backspace to clear and retype |
 
 ### The `/` pop-up
 
 `/` opens fzt's key pop-up (`core.OpenKeyPopup`; fzt's CLAUDE.md has the contract): the actions the keys do at that moment, each a verb, a description and its keys. `tui/popup.go` draws it from `drawUnified` and `renderFrame` alike: the frame underneath is drawn into a `MemScreen` and copied faded (`UnderPopupFg`), then the pop-up is drawn as an fzt frame of its own (`drawTree` through an `inset` canvas) in the box `core.KeyPopupBox` places, titled with what it acts on. Rows with `Item.Keys` end in keycaps (`drawKeycaps`, `KeycapStyle`). Clicks map through the same box in core. This is the runtime reference for the keys; the `:` palette's old `help` table is gone.
 
-New code adds no Alt or Meta binding, nor a Ctrl binding beyond Ctrl+C without Nelson's word.
+New code adds no Alt or Meta binding, nor a Ctrl binding beyond Ctrl+C and Ctrl+U without Nelson's word.
 
 ## Dependencies
 
@@ -280,6 +283,10 @@ Menu CRUD used to live in `packages/routes/` here (`@nelsong6/fzt-terminal-route
 - **Internalized shell commands**: load-*, unload, sync handled internally in HandleCommandAction -- no PowerShell function dependencies. load auto-syncs and exits; unload clears cache and exits.
 
 ## Change log
+
+### 2026-11-20
+
+- Ctrl+U erases the line: the search query, a prompt box, a rename. The engine handles it (fzt's `clearQuery`); fzt-picker's window and fzt-browser pass the key through, and tcell already delivers it here. OpenProject FT-13.
 
 ### 2026-11-18
 
