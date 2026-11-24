@@ -401,15 +401,11 @@ type Session = render.Session
 // SessionFrame is a type alias for the same reason.
 type SessionFrame = render.SessionFrame
 
-// NewSession creates a headless TUI session (flat mode) via the render package.
-func NewSession(items []core.Item, cfg Config, w, h int) *render.Session {
-	return render.NewSession(items, cfg, w, h, renderFrameDrawFunc)
-}
-
-// NewTreeSession creates a headless TUI session (tree mode) via the render package.
+// NewTreeSession creates a headless TUI session via the render package.
 // Applies frontend config and injects the command palette, matching the full TUI path.
+// It is the only kind there is: every fzt list draws as the menu does (ATC-195).
 func NewTreeSession(items []core.Item, cfg Config, w, h int) *render.Session {
-	sess := render.NewTreeSession(items, cfg, w, h, drawUnifiedTreeFunc, renderFrameDrawFunc)
+	sess := render.NewTreeSession(items, cfg, w, h, drawUnifiedTreeFunc, drawWholeFunc)
 	applyFrontendConfig(sess.State(), cfg)
 	frontend.InjectCommandFolder(sess.State(), frontend.EngineVersion)
 	return sess
@@ -420,22 +416,11 @@ func drawUnifiedTreeFunc(c render.Canvas, s *core.State, cfg core.Config, w, sta
 	drawUnified(c, s, cfg, w, startY, h)
 }
 
-// renderFrameDrawFunc wraps renderFrame as a render.DrawFunc.
-func renderFrameDrawFunc(c render.Canvas, s *core.State, cfg core.Config) {
-	renderFrame(c, s, cfg)
-}
-
-func renderFrame(c render.Canvas, s *core.State, cfg Config) {
+// drawWholeFunc is the session's fallback, for a state the tree hasn't set
+// up yet: the same tree, over the whole canvas.
+func drawWholeFunc(c render.Canvas, s *core.State, cfg core.Config) {
 	w, h := c.Size()
-	if core.KeyPopupOpen(s) {
-		drawKeyPopup(c, s, cfg, w, 0, h, func(c render.Canvas) { renderFrame(c, s, cfg) })
-		return
-	}
-	if cfg.Layout == "reverse" {
-		drawReverse(c, s, cfg, w, 0, h)
-	} else {
-		drawDefault(c, s, cfg, w, 0, h)
-	}
+	drawUnified(c, s, cfg, w, 0, h)
 }
 
 // Run launches the interactive TUI and returns how it ended.
@@ -454,30 +439,7 @@ func Run(items []core.Item, cfg Config) (Pick, error) {
 	screen.EnableMouse(tcell.MouseButtonEvents)
 	defer screen.DisableMouse()
 
-	if cfg.TreeMode {
-		return runWithSession(screen, items, cfg)
-	}
-
-	s, searchCols := core.NewState(items, cfg)
-	canvas := &tcellCanvas{screen: screen}
-
-	for {
-		screen.Clear()
-		renderFrame(canvas, s, cfg)
-		screen.Show()
-
-		ev := screen.PollEvent()
-		switch ev := ev.(type) {
-		case *tcell.EventKey:
-			shift := ev.Modifiers()&tcell.ModShift != 0
-			r := core.HandleKeyEventResult(s, ev.Key(), ev.Rune(), shift, cfg, searchCols)
-			if pick, ok := endingPick(processAction(s, r.Action), r); ok && pick.Kind != "command" {
-				return pick, nil
-			}
-		case *tcell.EventResize:
-			screen.Sync()
-		}
-	}
+	return runWithSession(screen, items, cfg)
 }
 
 // applyFrontendConfig sets frontend identity and provider from Config onto State.
@@ -915,12 +877,10 @@ func Simulate(items []core.Item, cfg Config, query string, w, h int, styled bool
 	applyFrontendConfig(s, cfg)
 	frontend.InjectCommandFolder(s, frontend.EngineVersion)
 
-	if cfg.TreeMode {
-		ctx := s.TopCtx()
-		ctx.TreeExpanded = make(map[int]bool)
-		ctx.QueryExpanded = make(map[int]bool)
-		core.RestCursor(s, cfg)
-	}
+	ctx := s.TopCtx()
+	ctx.TreeExpanded = make(map[int]bool)
+	ctx.QueryExpanded = make(map[int]bool)
+	core.RestCursor(s, cfg)
 
 	if cfg.FocusedDir != "" && s.Provider != nil {
 		core.ExpandToPath(s, cfg.FocusedDir, cfg, searchCols)
@@ -931,11 +891,7 @@ func Simulate(items []core.Item, cfg Config, query string, w, h int, styled bool
 
 	renderOne := func() string {
 		mem := render.NewMemScreen(w, h)
-		if cfg.TreeMode {
-			drawUnified(mem, s, cfg, w, 0, h)
-		} else {
-			renderFrame(mem, s, cfg)
-		}
+		drawUnified(mem, s, cfg, w, 0, h)
 		if styled {
 			return mem.StyledSnapshot()
 		}
@@ -948,11 +904,7 @@ func Simulate(items []core.Item, cfg Config, query string, w, h int, styled bool
 	// One frame per key event
 	keys := parseSimQuery(query)
 	for _, sk := range keys {
-		if cfg.TreeMode {
-			core.HandleUnifiedKey(s, sk.key, sk.ch, sk.shift, cfg, searchCols)
-		} else {
-			core.HandleKeyEvent(s, sk.key, sk.ch, sk.shift, cfg, searchCols)
-		}
+		core.HandleUnifiedKey(s, sk.key, sk.ch, sk.shift, cfg, searchCols)
 
 		label := fmt.Sprintf("key: %s  query: \"%s\"", sk.label, string(s.TopCtx().Query))
 		frames = append(frames, Frame{Label: label, Content: renderOne()})
@@ -978,429 +930,8 @@ func FormatFrames(frames []Frame) string {
 	return b.String()
 }
 
-func drawItemRow(c render.Canvas, item core.Item, isSelected bool, isSearching bool, cfg Config, ctx *core.TreeContext, borderOffset, y, w int) {
-	maxW := w - borderOffset*2
-
-	// Selection highlight
-	selStyle := tcell.StyleDefault
-	if isSelected {
-		selStyle = selStyle.Background(SelectionBg)
-	}
-
-	// Fill entire row with background if selected
-	if isSelected {
-		for fx := borderOffset; fx < w-borderOffset; fx++ {
-			c.SetContent(fx, y, ' ', nil, selStyle)
-		}
-	}
-
-	x := borderOffset
-
-	// Indicator: > for selected, space otherwise
-	if isSelected {
-		drawText(c, x, y, "\u25b8 ", selStyle.Foreground(FolderIconFg).Bold(true), 2)
-	} else {
-		drawText(c, x, y, "  ", tcell.StyleDefault, 2)
-	}
-	x += 2
-
-	// Name field
-	if len(item.Fields) > 0 {
-		nameStyle := tcell.StyleDefault
-		if item.HasChildren {
-			nameStyle = nameStyle.Foreground(FolderNameFg).Bold(true)
-		}
-		if isSelected {
-			nameStyle = nameStyle.Background(SelectionBg)
-			if !item.HasChildren {
-				nameStyle = nameStyle.Foreground(QueryFg)
-			}
-		}
-
-		var indices []int
-		if item.MatchIndices != nil && len(item.MatchIndices) > 0 {
-			indices = item.MatchIndices[0]
-		}
-		var sr []core.StyledRune
-		if item.StyledFields != nil && len(item.StyledFields) > 0 {
-			sr = item.StyledFields[0]
-		}
-
-		name := item.Fields[0]
-		// Draw name text with highlighting
-		startX := x
-		x = drawFieldText(c, x, y, name, sr, indices, nameStyle, isSelected, maxW)
-		// Pad name to fixed column width + gap
-		padStyle := nameStyle
-		targetX := startX + ctx.NameColWidth + ctx.ColGap
-		for x < targetX && x < maxW+borderOffset {
-			c.SetContent(x, y, ' ', nil, padStyle)
-			x++
-		}
-	}
-
-	// Icon columns: file (selectable) + folder (drillable)
-	// Nerd font icons may render as double-width, so allocate 2 cells each
-	if cfg.Tiered {
-		bgStyle := tcell.StyleDefault
-		if isSelected {
-			bgStyle = bgStyle.Background(SelectionBg)
-		}
-
-		// Single icon: folder for containers, file for leaves
-		if item.HasChildren {
-			c.SetContent(x, y, '\U000F024B', nil, bgStyle.Foreground(FolderIconFg).Bold(true))
-		} else {
-			c.SetContent(x, y, '\uF15B', nil, bgStyle.Foreground(BorderFg))
-		}
-		x++
-		c.SetContent(x, y, ' ', nil, bgStyle) // width buffer
-		x++
-	}
-
-	// Description field (dimmer)
-	if len(item.Fields) > 1 {
-		descStyle := tcell.StyleDefault
-		if isSelected {
-			descStyle = descStyle.Background(SelectionBg)
-		}
-
-		var indices []int
-		if item.MatchIndices != nil && len(item.MatchIndices) > 1 {
-			indices = item.MatchIndices[1]
-		}
-		var sr []core.StyledRune
-		if item.StyledFields != nil && len(item.StyledFields) > 1 {
-			sr = item.StyledFields[1]
-		}
-
-		x = drawFieldText(c, x, y, item.Fields[1], sr, indices, descStyle, isSelected, maxW)
-	}
-
-	// Breadcrumb path when searching nested results
-	if isSearching && cfg.Tiered && item.Depth > 0 && item.Path != "" {
-		pathStyle := tcell.StyleDefault.Foreground(PathFg).Italic(true)
-		if isSelected {
-			pathStyle = pathStyle.Background(SelectionBg)
-		}
-		// Find the parent part of the path (everything before the last >)
-		parentPath := ""
-		if lastSep := strings.LastIndex(item.Path, " \u203a "); lastSep >= 0 {
-			parentPath = item.Path[:lastSep]
-		}
-		if parentPath != "" {
-			pathStr := "  (" + parentPath + ")"
-			drawText(c, x, y, pathStr, pathStyle, maxW-x+borderOffset)
-		}
-	}
-
-}
-
-func drawReverse(c render.Canvas, s *core.State, cfg Config, w, startY, h int) {
-	ctx := s.TopCtx()
-	y := startY
-
-	borderOffset := 0
-	if cfg.Border {
-		drawBorderTopWithTitle(c, w, y, cfg.Title, cfg.TitlePos, 0, false, "", cfg.Label)
-		y++
-		borderOffset = 1
-	}
-
-	promptStr := cfg.Prompt
-	if promptStr == "" {
-		promptStr = "> "
-	}
-	promptLen := core.Width(promptStr)
-
-	if len(ctx.Query) > 0 {
-		// Typing: show query with cursor
-		promptStyle := tcell.StyleDefault.Foreground(PromptActiveFg).Bold(true)
-		drawText(c, borderOffset, y, promptStr, promptStyle, w-borderOffset*2)
-		drawText(c, promptLen+borderOffset, y, string(ctx.Query), tcell.StyleDefault, w-promptLen-borderOffset*2)
-		c.ShowCursor(promptLen+ctx.Cursor+borderOffset, y)
-	} else if ctx.Index >= 0 && ctx.Index < len(ctx.Filtered) {
-		// No query, item selected -- show item name as preview, dim prompt
-		dimPrompt := tcell.StyleDefault.Foreground(HintFg)
-		drawText(c, borderOffset, y, promptStr, dimPrompt, w-borderOffset*2)
-		previewText := ctx.Filtered[ctx.Index].Fields[0]
-		drawText(c, promptLen+borderOffset, y, previewText, tcell.StyleDefault.Foreground(GhostFg).Italic(true), w-promptLen-borderOffset*2)
-		c.HideCursor()
-	} else {
-		promptStyle := tcell.StyleDefault.Foreground(PromptActiveFg).Bold(true)
-		drawText(c, borderOffset, y, promptStr, promptStyle, w-borderOffset*2)
-		c.ShowCursor(promptLen+borderOffset, y)
-	}
-	y++
-
-	// Breadcrumb trail
-	scopePath := core.BuildScopePath(s)
-	if scopePath != "" {
-		bcStyle := tcell.StyleDefault.Foreground(BreadcrumbFg)
-		sepStyle := tcell.StyleDefault.Foreground(SeparatorFg)
-		bx := borderOffset + 1
-		drawText(c, bx, y, "\u25c2 ", sepStyle, w-borderOffset*2)
-		bx += 2
-		drawText(c, bx, y, scopePath, bcStyle, w-borderOffset*2-bx)
-	}
-	y++
-
-	for _, hdr := range ctx.Headers {
-		hdrStyle := tcell.StyleDefault.Foreground(HeaderFg).Bold(true)
-		hx := borderOffset + 2
-		// Name header
-		if len(hdr.Fields) > 0 {
-			drawText(c, hx, y, hdr.Fields[0], hdrStyle, w-borderOffset*2-2)
-			hx += ctx.NameColWidth + ctx.ColGap
-		}
-		// Skip icon column width if tiered (icon + buffer = 2)
-		if cfg.Tiered {
-			hx += 2
-		}
-		// Description header
-		if len(hdr.Fields) > 1 {
-			drawText(c, hx, y, hdr.Fields[1], hdrStyle, w-borderOffset*2-hx)
-		}
-		y++
-	}
-
-	// Divider line between header and items
-	if len(ctx.Headers) > 0 {
-		divStyle := tcell.StyleDefault.Foreground(SeparatorFg)
-		for dx := borderOffset + 1; dx < w-borderOffset-1; dx++ {
-			c.SetContent(dx, y, '\u2500', nil, divStyle)
-		}
-		y++
-	}
-
-	itemLines := startY + h - y
-	if cfg.Border {
-		itemLines--
-	}
-	if itemLines < 0 {
-		itemLines = 0
-	}
-
-	if ctx.Index >= 0 {
-		if ctx.Index < ctx.Offset {
-			ctx.Offset = ctx.Index
-		}
-		if ctx.Index >= ctx.Offset+itemLines {
-			ctx.Offset = ctx.Index - itemLines + 1
-		}
-	} else {
-		ctx.Offset = 0
-	}
-
-	isSearching := len(ctx.Query) > 0
-
-	for i := 0; i < itemLines && i+ctx.Offset < len(ctx.Filtered); i++ {
-		idx := i + ctx.Offset
-		item := ctx.Filtered[idx]
-		isSelected := idx == ctx.Index
-		drawItemRow(c, item, isSelected, isSearching, cfg, ctx, borderOffset, y+i, w)
-	}
-
-	if cfg.Border {
-		drawBorderSides(c, w, startY, startY+h-1)
-		drawBorderBottom(c, w, startY+h-1)
-	}
-}
-
-func drawDefault(c render.Canvas, s *core.State, cfg Config, w, startY, h int) {
-	ctx := s.TopCtx()
-	y := startY
-
-	borderOffset := 0
-	if cfg.Border {
-		drawBorderTopWithTitle(c, w, y, cfg.Title, cfg.TitlePos, 0, false, "", cfg.Label)
-		y++
-		borderOffset = 1
-	}
-
-	for _, hdr := range ctx.Headers {
-		hdrStyle := tcell.StyleDefault.Foreground(HeaderFg).Bold(true)
-		hx := borderOffset + 2
-		// Name header
-		if len(hdr.Fields) > 0 {
-			drawText(c, hx, y, hdr.Fields[0], hdrStyle, w-borderOffset*2-2)
-			hx += ctx.NameColWidth + ctx.ColGap
-		}
-		// Skip icon column width if tiered (icon + buffer = 2)
-		if cfg.Tiered {
-			hx += 2
-		}
-		// Description header
-		if len(hdr.Fields) > 1 {
-			drawText(c, hx, y, hdr.Fields[1], hdrStyle, w-borderOffset*2-hx)
-		}
-		y++
-	}
-
-	// Divider line between header and items
-	if len(ctx.Headers) > 0 {
-		divStyle := tcell.StyleDefault.Foreground(SeparatorFg)
-		for dx := borderOffset + 1; dx < w-borderOffset-1; dx++ {
-			c.SetContent(dx, y, '\u2500', nil, divStyle)
-		}
-		y++
-	}
-
-	promptLines := 2
-	itemLines := startY + h - y - promptLines
-	if cfg.Border {
-		itemLines--
-	}
-	if itemLines < 0 {
-		itemLines = 0
-	}
-
-	if ctx.Index >= 0 {
-		if ctx.Index < ctx.Offset {
-			ctx.Offset = ctx.Index
-		}
-		if ctx.Index >= ctx.Offset+itemLines {
-			ctx.Offset = ctx.Index - itemLines + 1
-		}
-	} else {
-		ctx.Offset = 0
-	}
-
-	isSearching := len(ctx.Query) > 0
-
-	for i := 0; i < itemLines && i+ctx.Offset < len(ctx.Filtered); i++ {
-		idx := i + ctx.Offset
-		item := ctx.Filtered[idx]
-		isSelected := idx == ctx.Index
-		drawItemRow(c, item, isSelected, isSearching, cfg, ctx, borderOffset, y+i, w)
-	}
-
-	bottomY := startY + h - promptLines
-	if cfg.Border {
-		bottomY--
-	}
-
-	scopePath := core.BuildScopePath(s)
-	if scopePath != "" {
-		bcStyle := tcell.StyleDefault.Foreground(BreadcrumbFg)
-		sepStyle := tcell.StyleDefault.Foreground(SeparatorFg)
-		bx := borderOffset + 1
-		drawText(c, bx, bottomY, "\u25c2 ", sepStyle, w-borderOffset*2)
-		bx += 2
-		drawText(c, bx, bottomY, scopePath, bcStyle, w-borderOffset*2-bx)
-	}
-
-	promptStr := cfg.Prompt
-	if promptStr == "" {
-		promptStr = "> "
-	}
-	promptLen := core.Width(promptStr)
-
-	if len(ctx.Query) > 0 {
-		promptStyle := tcell.StyleDefault.Foreground(PromptActiveFg).Bold(true)
-		drawText(c, borderOffset, bottomY+1, promptStr, promptStyle, w-borderOffset*2)
-		drawText(c, promptLen+borderOffset, bottomY+1, string(ctx.Query), tcell.StyleDefault, w-promptLen-borderOffset*2)
-		c.ShowCursor(promptLen+ctx.Cursor+borderOffset, bottomY+1)
-	} else if ctx.Index >= 0 && ctx.Index < len(ctx.Filtered) {
-		dimPrompt := tcell.StyleDefault.Foreground(HintFg)
-		drawText(c, borderOffset, bottomY+1, promptStr, dimPrompt, w-borderOffset*2)
-		previewText := ctx.Filtered[ctx.Index].Fields[0]
-		drawText(c, promptLen+borderOffset, bottomY+1, previewText, tcell.StyleDefault.Foreground(GhostFg).Italic(true), w-promptLen-borderOffset*2)
-		c.HideCursor()
-	} else {
-		promptStyle := tcell.StyleDefault.Foreground(PromptActiveFg).Bold(true)
-		drawText(c, borderOffset, bottomY+1, promptStr, promptStyle, w-borderOffset*2)
-		c.ShowCursor(promptLen+borderOffset, bottomY+1)
-	}
-
-	if cfg.Border {
-		drawBorderSides(c, w, startY, startY+h-1)
-		drawBorderBottom(c, w, startY+h-1)
-	}
-}
-
-// drawFieldText draws text with optional ANSI styles and match highlighting. No column padding.
-func drawFieldText(c render.Canvas, x, y int, field string, styledRunes []core.StyledRune, indices []int, baseStyle tcell.Style, isSelected bool, maxW int) int {
-	indexSet := make(map[int]bool)
-	for _, idx := range indices {
-		indexSet[idx] = true
-	}
-
-	hlStyle := baseStyle.Foreground(HighlightFg).Bold(true)
-	if isSelected {
-		hlStyle = hlStyle.Background(SelectionBg)
-	}
-
-	return x + drawClusters(c, x, y, field, max(maxW-x, 0), func(i int) tcell.Style {
-		style := baseStyle
-		if styledRunes != nil && i < len(styledRunes) {
-			style = styledRunes[i].Style
-			if isSelected {
-				fg, _, attrs := style.Decompose()
-				style = tcell.StyleDefault.Background(SelectionBg).Foreground(fg).Attributes(attrs)
-			}
-		}
-		if indexSet[i] {
-			style = hlStyle
-		}
-		return style
-	})
-}
-
-func drawHighlightedField(c render.Canvas, x, y int, field string, styledRunes []core.StyledRune, indices []int, baseStyle tcell.Style, isSelected bool, widths []int, fieldIdx, gap, maxW int) int {
-	indexSet := make(map[int]bool)
-	for _, idx := range indices {
-		indexSet[idx] = true
-	}
-
-	drawn := drawClusters(c, x, y, field, max(maxW-x, 0), func(i int) tcell.Style {
-		style := baseStyle
-
-		// Layer 1: Apply ANSI color if available
-		if styledRunes != nil && i < len(styledRunes) {
-			style = styledRunes[i].Style
-			// If this row is selected, override the background but keep the foreground color
-			if isSelected {
-				fg, _, attrs := style.Decompose()
-				style = tcell.StyleDefault.Background(SelectionBg).Foreground(fg).Attributes(attrs)
-			}
-		}
-
-		// Layer 2: Override with match highlight
-		if indexSet[i] {
-			if isSelected {
-				style = style.Foreground(HighlightFg).Bold(true).Background(SelectionBg)
-			} else {
-				style = style.Foreground(HighlightFg).Bold(true)
-			}
-		}
-		return style
-	})
-	x += drawn
-
-	if fieldIdx < len(widths)-1 {
-		for ; drawn < widths[fieldIdx] && x < maxW; drawn++ {
-			c.SetContent(x, y, ' ', nil, baseStyle)
-			x++
-		}
-		for g := 0; g < gap; g++ {
-			if x >= maxW {
-				break
-			}
-			c.SetContent(x, y, ' ', nil, baseStyle)
-			x++
-		}
-	}
-
-	return x
-}
-
 func drawText(c render.Canvas, x, y int, text string, style tcell.Style, maxW int) {
 	drawClusters(c, x, y, text, maxW, func(int) tcell.Style { return style })
-}
-
-func drawBorderTop(c render.Canvas, w, y int) {
-	drawBorderTopWithTitle(c, w, y, "", "", 0, false, "")
 }
 
 // drawBorderTopWithTitle renders the top border with an optional centered

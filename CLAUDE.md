@@ -20,8 +20,8 @@ fzt-frontend (interaction layer)
 Consumers of this repo's tui package:
   fzt            (cmd/fzt)    -> tui.Run over stdin / --yaml: the fzf-style picker CLI
   fzt-automate   (CLI)        -> tui.Run for the shell menu
-  fzt-picker     (Windows)    -> tui.NewSession headless, rendered via CGo/GDI
-  fzt-browser    (WASM)       -> tui.NewSession headless, rendered via ANSI in browser
+  fzt-picker     (Windows)    -> tui.NewTreeSession headless, rendered via CGo/GDI
+  fzt-browser    (WASM)       -> tui.NewTreeSession headless, rendered via ANSI in browser
   fztlib         (cmd/fztlib) -> host.Session as a C library (Windows DLL), for apps that draw the menu themselves
 ```
 
@@ -61,7 +61,7 @@ Full-screen TUI rendering via tcell. Key files:
 
 | File | Purpose |
 |------|---------|
-| `tui.go` | Entry points: `Run` (full-screen), `NewSession`/`NewTreeSession` (headless), `Simulate` (testing). Layout functions: `drawDefault`, `drawReverse`, `drawUnified` (tree mode; `drawTree` draws the frame, `popup.go` the `/` pop-up over it). `drawBorderTopWithTitle` renders the title bar with titleStyleHint (0=default cyan, 1=green success, 2=red error, 3=neutral slate, 4=nav-mode NavModeFg, 5=search-mode SearchModeFg) and syncIcon parameters. |
+| `tui.go` | Entry points: `Run` (full-screen), `NewTreeSession` (headless), `Simulate` (testing). Every list draws with `drawUnified` (`drawTree` draws the frame, `popup.go` the `/` pop-up over it), whatever `Config.TreeMode` says: there is one style, the menu's (ATC-195; the old fzf-style flat drawing, a bare prompt line over the rows, was removed once nothing but three forgotten pickers still used it). `drawBorderTopWithTitle` renders the title bar with titleStyleHint (0=default cyan, 1=green success, 2=red error, 3=neutral slate, 4=nav-mode NavModeFg, 5=search-mode SearchModeFg) and syncIcon parameters. |
 | `tree.go` | Unified tree renderer: `drawUnified` draws prompt bar + tree as a single navigation surface. `drawTreeRow` renders individual rows with icons, indentation, match highlighting. Headers start at borderOffset+5 to match tree row layout (2 selection + 2 icon + 1 buffer). `descColumn` places the description column: it fits the entries of the folder you are in (the top level until one is entered), so it moves only when a folder is entered or left, never as the selection moves or a search or click opens folders in place; a longer name pushes only its own description right, except on a row outside the folder you entered (a level above it, or the folder's own row), where it is cut to the column with `…` (FT-15). Nelson asked for the columns to resize only as folder levels are entered; FT-7 and FT-9 had it follow the selection instead (FT-14). |
 | `sync.go` | Background sync check: `initSyncCheck`, `checkBookmarkStaleness`. 1-second ticker goroutine posts `tcell.EventInterrupt` for live redraws. 20-minute sync interval with `.last-sync-check` file. SyncIcon rendering (yellow icon in top-right corner). |
 | `style.go` | Semantic color constants (Catppuccin Mocha palette mapped to tcell colors). CSS equivalents documented in comments. Exports `PaletteRGB` (tcell color → RGB map), `ColorToRGB()` (any tcell color to RGB), `BaseBgRGB`/`TextFgRGB` (default bg/fg), `DefaultFontName`/`DefaultFontSize` (the GDI font, `CaskaydiaMono NF`), `NavModeFg`/`SearchModeFg` (mode-indicator colors). Used by GDI renderers (picker) to stay aligned with the terminal palette. |
@@ -102,7 +102,7 @@ The command tree may contain multiple items named "on" and "off" (e.g. under `wh
 ### Startup flow (terminal -- `tui.Run`)
 
 1. Items loaded from `menu-cache.yaml` (synced from `/fzt/tree/<sub>-menu` endpoint) instead of static root.yaml
-2. `tui.Run(items, cfg)` -- creates tcell screen, delegates to `runWithSession` if TreeMode
+2. `tui.Run(items, cfg)` -- creates tcell screen, delegates to `runWithSession`
 3. `core.NewState(items, cfg)` -- creates root context with AllItems
 4. `applyFrontendConfig(s, cfg)` -- copies FrontendName/Version/Commands + HidePalette to State
 5. `terminal.InjectCommandFolder(s, EngineVersion)` -- appends the `:` palette folder (visible at root; skipped entirely when `HidePalette` is set)
@@ -194,7 +194,7 @@ Escape performs progressive unwind. Each press steps back one layer; reaching ro
 
 Ctrl+C skips the cascade: it cancels in one press from any step (a rename in progress is put back first).
 
-Ctrl+U, the terminal's line-erase, clears the query in one press without unwinding anything: it never leaves a folder, and from normal mode it returns to search. Where the box has a text cursor (the flat list, a prompt box from `Live.Ask` or an input entry) it deletes only the text before the cursor, as a shell does.
+Ctrl+U, the terminal's line-erase, clears the query in one press without unwinding anything: it never leaves a folder, and from normal mode it returns to search. Where the box has a text cursor (a prompt box from `Live.Ask` or an input entry) it deletes only the text before the cursor, as a shell does.
 
 Shift+Backspace collapses the query-clear and scope-pop steps into a single gesture — resets to home (`core.GoHome`: pop all scope, clear query, clear filtered). Preserves the active edit mode when one is set, so the user doesn't lose an in-progress add/rename while re-orienting.
 
@@ -275,7 +275,7 @@ Menu CRUD used to live in `packages/routes/` here (`@nelsong6/fzt-terminal-route
 
 ## Key patterns
 
-- **Headless sessions**: `tui.NewSession` / `tui.NewTreeSession` create sessions that render to `MemScreen` without a real terminal. Used by WASM bridge and `Simulate`.
+- **Headless sessions**: `tui.NewTreeSession` creates sessions that render to `MemScreen` without a real terminal. Used by the WASM bridge, fzt-picker and at-claude. A plain picker sets `HidePalette`, or the `:` commands row joins its list.
 - **Dual render paths**: ANSI-based (terminal + `fzt-terminal.js`) and structured data (DOM renderer via `getVisibleRows` etc.).
 - **Type aliases**: `tui.Config`, `tui.Session`, `tui.SessionFrame` alias engine types so callers compile after refactors.
 - **Title bar as status area**: `State.SetTitle` / `ClearTitle` manage the title bar as a dynamic status area. TitleOverride always takes priority over ambient displays (timer, sync status). `drawBorderTopWithTitle` accepts titleStyleHint and syncIcon parameters.
