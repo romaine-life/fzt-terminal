@@ -6,7 +6,7 @@ require (
 	github.com/gdamore/tcell/v2 v2.13.10
 	github.com/rivo/uniseg v0.4.7
 	github.com/romaine-life/fzt v0.2.121
-	github.com/romaine-life/fzt-frontend v0.1.83
+	github.com/romaine-life/fzt-frontend v0.1.84
 	golang.org/x/sys v0.49.0
 	golang.org/x/term v0.47.0
 )
@@ -21,7 +21,7 @@ require (
 	github.com/gsterjov/go-libsecret v0.0.0-20161001094733-a6f4afe4910c // indirect
 	github.com/lucasb-eyer/go-colorful v1.3.0 // indirect
 	github.com/mtibben/percent v0.2.1 // indirect
-	github.com/romaine-life/auth v0.1.64 // indirect
+	github.com/romaine-life/auth v0.1.65 // indirect
 	golang.org/x/crypto v0.58.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
