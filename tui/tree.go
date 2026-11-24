@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/uniseg"
 	"github.com/romaine-life/fzt/core"
 	"github.com/romaine-life/fzt/render"
 )
@@ -434,7 +435,11 @@ func drawTreeRow(c render.Canvas, row core.TreeRow, isSelected, isTopMatch bool,
 	}
 
 	nameWidth := effectiveNameCol - indent
-	if nameWidth < core.Width(name)+1 {
+	if core.Width(name)+ctx.ColGap > nameWidth && outsideEnteredFolder(ctx, row) {
+		// A row outside the folder you entered is context: its name is cut
+		// to the column, not let push its description (FT-15).
+		name = cutName(name, nameWidth-ctx.ColGap)
+	} else if nameWidth < core.Width(name)+1 {
 		nameWidth = core.Width(name) + 1
 	}
 
@@ -465,6 +470,42 @@ func drawTreeRow(c render.Canvas, row core.TreeRow, isSelected, isTopMatch bool,
 			drawRowText(c, x, y, desc, styledField(row.Item, 1), descStyle, remaining, nil, hasBg)
 		}
 	}
+}
+
+// outsideEnteredFolder reports whether a row sits outside the folder you
+// entered: a row of a level above it, or the folder's own row. Before any
+// folder is entered nothing is outside.
+func outsideEnteredFolder(ctx *core.TreeContext, row core.TreeRow) bool {
+	folder := ctx.Scope[len(ctx.Scope)-1].ParentIdx
+	if folder < 0 {
+		return false
+	}
+	for p := row.Item.ParentIdx; p >= 0 && p < len(ctx.AllItems); p = ctx.AllItems[p].ParentIdx {
+		if p == folder {
+			return false
+		}
+	}
+	return true
+}
+
+// cutName is name cut on a cluster boundary to fit w cells, its last cell an
+// ellipsis.
+func cutName(name string, w int) string {
+	if w <= 1 {
+		return "…"
+	}
+	out, used, state := "", 0, -1
+	for name != "" {
+		var cluster string
+		cluster, name, _, state = uniseg.FirstGraphemeClusterInString(name, state)
+		cw := max(core.Width(cluster), 1)
+		if used+cw > w-1 {
+			break
+		}
+		out += cluster
+		used += cw
+	}
+	return out + "…"
 }
 
 // drawKeycaps draws keys right-aligned to end before column right, each a

@@ -54,7 +54,8 @@ func descAt(t *testing.T, rows []string, name, desc string, depth int) int {
 // The description column fits the entries of the folder you are in, the top
 // level until one is entered, and holds still as the selection moves or a
 // search opens folders in place; a longer name pushes only its own
-// description (FT-14).
+// description unless it sits outside the folder you entered, where it is cut
+// with an ellipsis (FT-14, FT-15).
 func TestDescColumnFitsTheEnteredLevel(t *testing.T) {
 	cfg := Config{Layout: "reverse", Tiered: true, TreeMode: true, DepthPenalty: 5, HidePalette: true}
 	top := len("a-command-with-a-very-long-name") + 2 // the top level's longest name
@@ -83,7 +84,7 @@ func TestDescColumnFitsTheEnteredLevel(t *testing.T) {
 			"The first entry":  inNav,
 			"The second entry": inNav,
 			"Restart the app":  inNav,
-			"Far away":         len("a-command-with-a-very-long-name") + 1,
+			"Far away":         inNav,
 		}},
 		{"entered folder, cursor outside it", "{down}{down}{enter}{up}{up}", map[string]int{
 			"The second entry": inNav,
@@ -102,10 +103,10 @@ func TestDescColumnFitsTheEnteredLevel(t *testing.T) {
 				depth int
 			}{
 				"Show the links":   {"links", 0},
-				"Far away":         {"a-command-with-a-very-long-name", 0},
+				"Far away":         {drawn("a-command-with-a-very-long-name", tc.keys), 0},
 				"The first entry":  {"first-entry", 1},
 				"The second entry": {"second", 1},
-				"Restart the app":  {"reload-the-app", 0},
+				"Restart the app":  {drawn("reload-the-app", tc.keys), 0},
 			}
 			for desc, want := range tc.want {
 				row := names[desc]
@@ -115,4 +116,14 @@ func TestDescColumnFitsTheEnteredLevel(t *testing.T) {
 			}
 		})
 	}
+}
+
+// drawn is a top-level name as drawn: whole at the top level or in a folder
+// only a search opened; once nav is entered, cut to nav's column less the gap
+// (13 cells) with an ellipsis.
+func drawn(name, keys string) string {
+	if strings.Contains(keys, "{enter}") && !strings.HasSuffix(keys, "{esc}") && len(name) > 13 {
+		return name[:12] + "…"
+	}
+	return name
 }
