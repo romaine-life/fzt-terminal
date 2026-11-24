@@ -51,40 +51,47 @@ func descAt(t *testing.T, rows []string, name, desc string, depth int) int {
 	return 0
 }
 
-// The description column fits the selected row until a folder is entered or
-// the selection is inside one opened in place, then that folder's entries; a
-// longer name pushes only its own description (FT-7, FT-9).
-func TestDescColumnFollowsTheSelection(t *testing.T) {
+// The description column fits the entries of the folder you are in, the top
+// level until one is entered, and holds still as the selection moves or a
+// search opens folders in place; a longer name pushes only its own
+// description (FT-14).
+func TestDescColumnFitsTheEnteredLevel(t *testing.T) {
 	cfg := Config{Layout: "reverse", Tiered: true, TreeMode: true, DepthPenalty: 5, HidePalette: true}
-	long := len("a-command-with-a-very-long-name") + 1
+	top := len("a-command-with-a-very-long-name") + 2 // the top level's longest name
+	inNav := 2 + len("first-entry") + 2               // nav's longest entry, indented
 	for _, tc := range []struct {
 		name string
 		keys string
 		want map[string]int // a row's description, and where it should start
 	}{
-		{"selected row", "{down}{down}{down}", map[string]int{
-			"Restart the app": len("reload-the-app") + 2,
-			"Show the links":  len("reload-the-app") + 2,
-			"Far away":        long,
+		{"top level, first row selected", "", map[string]int{
+			"Show the links":  top,
+			"Far away":        top,
+			"Restart the app": top,
 		}},
-		{"short selected row keeps the minimum", "", map[string]int{
-			"Show the links": 12,
-			"Far away":       long,
-		}},
-		{"entered folder", "{down}{down}{enter}{down}", map[string]int{
-			"The first entry":  2 + len("first-entry") + 2,
-			"The second entry": 2 + len("first-entry") + 2,
-			"Restart the app":  2 + len("first-entry") + 2,
-			"Far away":         long,
+		{"top level, selection moved", "{down}{down}{down}", map[string]int{
+			"Show the links":  top,
+			"Far away":        top,
+			"Restart the app": top,
 		}},
 		{"folder opened in place by a search", "entr{down}", map[string]int{
-			"The first entry":  2 + len("first-entry") + 2,
-			"The second entry": 2 + len("first-entry") + 2,
-			"Far away":         long,
+			"The first entry":  top,
+			"The second entry": top,
+			"Far away":         top,
+		}},
+		{"entered folder", "{down}{down}{enter}{down}", map[string]int{
+			"The first entry":  inNav,
+			"The second entry": inNav,
+			"Restart the app":  inNav,
+			"Far away":         len("a-command-with-a-very-long-name") + 1,
 		}},
 		{"entered folder, cursor outside it", "{down}{down}{enter}{up}{up}", map[string]int{
-			"The second entry": 2 + len("first-entry") + 2,
-			"Show the links":   2 + len("first-entry") + 2,
+			"The second entry": inNav,
+			"Show the links":   inNav,
+		}},
+		{"folder left again", "{down}{down}{enter}{esc}", map[string]int{
+			"Show the links":  top,
+			"Restart the app": top,
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

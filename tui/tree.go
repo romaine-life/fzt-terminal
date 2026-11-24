@@ -74,7 +74,7 @@ func drawTree(c render.Canvas, s *core.State, cfg Config, w, startY, h int) {
 	hasQuery := len(ctx.Query) > 0
 	visible := core.TreeVisibleItems(s)
 
-	effectiveNameCol := descColumn(ctx, cfg, visible)
+	effectiveNameCol := descColumn(ctx, cfg)
 
 	// Prompt bar -- bordered input field, the primary UI element
 	promptBg := PromptSurfaceBg
@@ -313,42 +313,37 @@ func drawTree(c render.Canvas, s *core.State, cfg Config, w, startY, h int) {
 
 // descColumn is where the description column starts, as a row's indent plus
 // its name plus the gap, counted from where the indent begins. It fits the
-// folder the selected row is in, whether that folder was entered or opened in
-// place; with the selection at the top level it fits the entered folder's
-// entries, or before any folder is entered the selected row alone, or every
-// row when none is selected. A row whose name runs past it pushes only its
-// own description right (drawTreeRow).
-func descColumn(ctx *core.TreeContext, cfg Config, visible []core.TreeRow) int {
-	need := func(row core.TreeRow) int {
-		n := 0
-		if len(row.Item.Fields) > 0 {
-			n = core.Width(row.Item.Fields[0])
-		}
-		return rowIndent(row, cfg) + n + ctx.ColGap
-	}
+// entries of the folder you are in (the top level until one is entered), so it
+// moves only when a folder is entered or left: never as the selection moves,
+// a search opens folders in place, or a folder is expanded. A row whose name
+// runs past it pushes only its own description right (drawTreeRow). Nelson:
+// the columns resize only as folder levels are entered (FT-14, after FT-7 and
+// FT-9 had it follow the selection).
+func descColumn(ctx *core.TreeContext, cfg Config) int {
 	col := 12 // so the headers don't collapse
-	fit := func(folder int) int {
+	fit := func(idx int) {
+		item := ctx.AllItems[idx]
+		if item.Hidden {
+			return
+		}
+		n := 0
+		if len(item.Fields) > 0 {
+			n = core.Width(item.Fields[0])
+		}
+		col = max(col, rowIndent(core.TreeRow{Item: item, ItemIdx: idx}, cfg)+n+ctx.ColGap)
+	}
+	if folder := ctx.Scope[len(ctx.Scope)-1].ParentIdx; folder >= 0 && folder < len(ctx.AllItems) {
 		for _, idx := range ctx.AllItems[folder].Children {
-			if idx < len(ctx.AllItems) && !ctx.AllItems[idx].Hidden {
-				col = max(col, need(core.TreeRow{Item: ctx.AllItems[idx], ItemIdx: idx}))
+			if idx >= 0 && idx < len(ctx.AllItems) {
+				fit(idx)
 			}
 		}
 		return col
 	}
-	selected := ctx.TreeCursor >= 0 && ctx.TreeCursor < len(visible)
-	if selected {
-		if folder := visible[ctx.TreeCursor].Item.ParentIdx; folder >= 0 && folder < len(ctx.AllItems) {
-			return fit(folder)
+	for idx := range ctx.AllItems {
+		if ctx.AllItems[idx].ParentIdx < 0 {
+			fit(idx)
 		}
-	}
-	if folder := ctx.Scope[len(ctx.Scope)-1].ParentIdx; folder >= 0 && folder < len(ctx.AllItems) {
-		return fit(folder)
-	}
-	if selected {
-		return max(col, need(visible[ctx.TreeCursor]))
-	}
-	for _, row := range visible {
-		col = max(col, need(row))
 	}
 	return col
 }
