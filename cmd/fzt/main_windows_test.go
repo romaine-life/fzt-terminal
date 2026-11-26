@@ -11,5 +11,5 @@ func TestATerminalThatWontOpenIsLoggedWithoutTheItems(t *testing.T) {
 	noConsole := func(cmd *exec.Cmd) {
 		cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: detachedProcess}
 	}
-	failed(t, fzt(t, "private-item\n", noConsole, "--border"), "couldn't open the terminal: ", "private-item")
+	failed(t, fzt(t, "private-item\n", noConsole, "--border"), "couldn't open the terminal", "", "private-item")
 }

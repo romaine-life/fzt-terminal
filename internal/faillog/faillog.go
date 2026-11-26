@@ -1,7 +1,7 @@
 // Package faillog records fzt's failures in the file log-ship sends to the app log pile
 // (at-home-tools docs/app-logs.md). Every home PC can read the pile, so no caller hands
 // this a query, a pick, an item or a path. A line is one write, which keeps it whole
-// when several fzts fail at once.
+// when several fzts fail at once, and the file rolls to fzt.log.old past 1 MiB.
 package faillog
 
 import (
@@ -11,39 +11,24 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"time"
 
 	"github.com/romaine-life/fzt/render"
+	"github.com/romaine-life/logline"
 )
 
-const limit = 1 << 20
+// Env names a file to log to instead of %LOCALAPPDATA%\fzt\fzt.log: tests and
+// throwaway runs keep their lines out of the pile with it.
+const Env = "FZT_LOG"
 
-// Write appends one line. A log that can't be written gives way to the failure it was
+// Write logs one failure as an error line (logline's standard, AHT-204): msg is fixed
+// wording, kv its key, value fields, then the program and fzt's version. The log is
+// opened for this line only, so a host that loaded fztlib holds no state of ours
+// between calls, and a log that can't be written gives way to the failure it was
 // reporting, which the caller has already shown.
-func Write(what string) {
-	dir, err := os.UserCacheDir()
-	if err != nil {
-		return
-	}
-	file := filepath.Join(dir, "fzt", "fzt.log")
-	if info, err := os.Stat(file); err == nil && info.Size() > limit {
-		_ = os.Rename(file, file+".old")
-	}
-	if err := os.MkdirAll(filepath.Dir(file), 0o700); err != nil {
-		return
-	}
-	f, err := os.OpenFile(file, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
-	if err != nil {
-		return
-	}
-	defer f.Close()
-	_, _ = f.WriteString(line(what))
-}
-
-func line(what string) string {
+func Write(msg string, kv ...any) {
 	program, _ := os.Executable()
-	what = strings.NewReplacer("\r", " ", "\n", " ").Replace(what)
-	return fmt.Sprintf("%s %s %s pid %d: %s\n", time.Now().Format(time.RFC3339), filepath.Base(program), render.Version, os.Getpid(), what)
+	kv = append(kv, "exe", filepath.Base(program), "version", render.Version)
+	logline.Open("fzt", Env).Error(msg, kv...)
 }
 
 // Crash, deferred, logs a panic and lets it carry on, so the process dies as it always
@@ -58,7 +43,7 @@ func Crash() {
 	if err, ok := r.(runtime.Error); ok {
 		what = err.Error()
 	}
-	Write("crash: " + what + " at " + stack())
+	Write("crash", "error", what, "stack", stack())
 	panic(r)
 }
 

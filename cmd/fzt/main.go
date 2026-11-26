@@ -67,7 +67,7 @@ func main() {
 		if errors.Is(err, flag.ErrHelp) {
 			exit(0)
 		}
-		logFailure(flagError(err)) // flag has already told stderr
+		logFailure("bad flag", "error", flagError(err)) // flag has already told stderr
 		exit(2)
 	}
 	if *paneIO != "" {
@@ -107,7 +107,7 @@ func main() {
 		var err error
 		items, err = core.LoadYAML(*yamlPath)
 		if err != nil {
-			fail(fmt.Sprintf("loading yaml: %v", err), "couldn't load --yaml: "+yamlCause(err))
+			fail(fmt.Sprintf("loading yaml: %v", err), "couldn't load --yaml", "error", yamlCause(err))
 		}
 		cfg.Tiered = true
 		cfg.TreeMode = true
@@ -121,7 +121,7 @@ func main() {
 	} else {
 		lines, err := readStdin()
 		if err != nil {
-			fail(err.Error(), "couldn't read input: "+err.Error())
+			fail(err.Error(), "couldn't read input", "error", err.Error())
 		}
 		if len(lines) == 0 {
 			exit(1)
@@ -146,31 +146,32 @@ func main() {
 
 	pick, err := tui.Run(items, cfg)
 	if err != nil {
-		fail(err.Error(), "couldn't open the terminal: "+err.Error())
+		fail(err.Error(), "couldn't open the terminal", "error", err.Error())
 	}
 	if pick.Kind == "cancel" {
 		exit(130)
 	}
 	if _, err := fmt.Println(pick.Output); err != nil {
-		fail(err.Error(), "couldn't write the result: "+err.Error())
+		fail(err.Error(), "couldn't write the result", "error", err.Error())
 	}
 	exit(0)
 }
 
 // fail ends the run on exit 2. shown goes to whoever ran fzt and can name anything;
-// logged goes to the pile, so it holds no path, item or text from the caller.
-func fail(shown, logged string) {
+// msg (fixed wording) and kv go to the pile, so they hold no path, item or text from
+// the caller.
+func fail(shown, msg string, kv ...any) {
 	fmt.Fprintln(os.Stderr, "fzt: "+shown)
-	logFailure(logged)
+	logFailure(msg, kv...)
 	exit(2)
 }
 
 // logFailure adds the flags that were set, without their values: fzt runs inside other
 // tools, and those names are what say which one called it.
-func logFailure(what string) {
+func logFailure(msg string, kv ...any) {
 	var set []string
 	flag.Visit(func(f *flag.Flag) { set = append(set, f.Name) })
-	faillog.Write(what + " (flags: " + strings.Join(set, ",") + ")")
+	faillog.Write(msg, append(kv, "flags", strings.Join(set, ","))...)
 }
 
 // flagError keeps a parse error only when it holds nothing but a flag's name.

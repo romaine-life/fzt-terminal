@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/romaine-life/logline"
 )
 
 const runMainEnv = "FZT_TEST_RUN_MAIN"
@@ -36,7 +38,7 @@ func fzt(t *testing.T, stdin string, prepare func(*exec.Cmd), args ...string) ru
 		t.Fatal(err)
 	}
 	cmd := exec.Command(exe, args...)
-	cmd.Env = append(os.Environ(), runMainEnv+"=1", "LocalAppData="+cache, "XDG_CACHE_HOME="+cache)
+	cmd.Env = append(os.Environ(), runMainEnv+"=1", "FZT_LOG=", "LocalAppData="+cache, "XDG_CACHE_HOME="+cache)
 	if stdin != "" {
 		cmd.Stdin = strings.NewReader(stdin)
 	}
@@ -61,21 +63,39 @@ func fzt(t *testing.T, stdin string, prepare func(*exec.Cmd), args ...string) ru
 	return r
 }
 
-// failed checks what every failure shares: exit 2, nothing on stdout, and one line in
-// the log holding want and none of the caller's text.
-func failed(t *testing.T, r run, want string, private ...string) {
+// failed checks what every failure shares: exit 2, nothing on stdout, and one standard
+// error line in the log (logline's, AHT-204) with message msg, an error field holding
+// cause, and none of the caller's text. It returns the line.
+func failed(t *testing.T, r run, msg, cause string, private ...string) logline.Entry {
 	t.Helper()
 	if r.exit != 2 || r.stdout != "" {
 		t.Fatalf("want exit 2 and no stdout: %+v", r)
 	}
-	if strings.Count(r.log, "\n") != 1 || !strings.Contains(r.log, want) {
-		t.Fatalf("want one line holding %q: %q", want, r.log)
+	if strings.Count(r.log, "\n") != 1 {
+		t.Fatalf("want one line: %q", r.log)
+	}
+	e, err := logline.Parse(strings.TrimSuffix(r.log, "\n"))
+	if err != nil {
+		t.Fatalf("%v: %q", err, r.log)
+	}
+	if e.Level != logline.Error || e.Message != msg || !strings.Contains(field(e, "error"), cause) {
+		t.Fatalf("want %q with error %q: %q", msg, cause, r.log)
 	}
 	for _, text := range private {
 		if strings.Contains(r.log, text) {
 			t.Fatalf("%q reached the log: %q", text, r.log)
 		}
 	}
+	return e
+}
+
+func field(e logline.Entry, key string) string {
+	for _, f := range e.Fields {
+		if f.Key == key {
+			return f.Value
+		}
+	}
+	return ""
 }
 
 func TestRunsThatWentWellLogNothing(t *testing.T) {
@@ -93,8 +113,8 @@ func TestRunsThatWentWellLogNothing(t *testing.T) {
 func TestAMissingYAMLIsLoggedWithoutItsPath(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "private-name.yaml")
 	r := fzt(t, "", nil, "--yaml", path, "--title", "private-title")
-	failed(t, r, "couldn't load --yaml: ", "private-name", "private-title")
-	if !strings.Contains(r.log, "(flags: title,yaml)") || !strings.Contains(r.stderr, "private-name") {
+	e := failed(t, r, "couldn't load --yaml", "", "private-name", "private-title")
+	if field(e, "flags") != "title,yaml" || !strings.Contains(r.stderr, "private-name") {
 		t.Fatalf("%+v", r)
 	}
 }
@@ -104,27 +124,27 @@ func TestABadYAMLIsLoggedWithoutItsContent(t *testing.T) {
 	if err := os.WriteFile(path, []byte("private-item"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	failed(t, fzt(t, "", nil, "--yaml", path), "couldn't load --yaml: not a valid menu", "private-item", "menu.yaml")
+	failed(t, fzt(t, "", nil, "--yaml", path), "couldn't load --yaml", "not a valid menu", "private-item", "menu.yaml")
 }
 
 func TestNoInputIsLogged(t *testing.T) {
-	failed(t, fzt(t, "", nil), "couldn't read input: no input")
+	failed(t, fzt(t, "", nil), "couldn't read input", "no input")
 }
 
 func TestALineTooLongToReadIsLoggedWithoutIt(t *testing.T) {
 	r := fzt(t, "private-item"+strings.Repeat("x", 1<<20)+"\n", nil)
-	failed(t, r, "couldn't read input: bufio.Scanner: token too long", "private-item")
+	failed(t, r, "couldn't read input", "bufio.Scanner: token too long", "private-item")
 }
 
 func TestAnUnknownFlagIsLoggedByName(t *testing.T) {
 	r := fzt(t, "alpha\n", nil, "--no-such-flag")
-	failed(t, r, "flag provided but not defined: -no-such-flag")
+	failed(t, r, "bad flag", "flag provided but not defined: -no-such-flag")
 	if !strings.Contains(r.stderr, "no-such-flag") {
 		t.Fatalf("%+v", r)
 	}
 }
 
 func TestAFlagsValueStaysOutOfTheLog(t *testing.T) {
-	failed(t, fzt(t, "alpha\n", nil, "--depth-penalty=private-text"), "a flag has a bad value", "private-text")
-	failed(t, fzt(t, "alpha\n", nil, "-private item"), "a flag has a bad value", "private")
+	failed(t, fzt(t, "alpha\n", nil, "--depth-penalty=private-text"), "bad flag", "a flag has a bad value", "private-text")
+	failed(t, fzt(t, "alpha\n", nil, "-private item"), "bad flag", "a flag has a bad value", "private")
 }
