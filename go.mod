@@ -7,7 +7,7 @@ require (
 	github.com/rivo/uniseg v0.4.7
 	github.com/romaine-life/fzt v0.2.121
 	github.com/romaine-life/fzt-frontend v0.1.87
-	github.com/romaine-life/logline v0.1.2
+	github.com/romaine-life/logline v0.1.3
 	golang.org/x/sys v0.49.0
 	golang.org/x/term v0.47.0
 )
